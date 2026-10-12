@@ -3,6 +3,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session as AuthSession } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { EMPTY_PROFILE, type Discomfort, type Profile } from "@/lib/health";
+import { DiscomfortList, DiscomfortSheet, ProfileCard } from "@/components/Perfil";
 import {
   DAYS, MONTHS, FEELS, FOOD, feelName, fmtNum, fmtW, freshItem, itemDone, keyOf, lastFor, metricOf, mmss,
   parseKey, parseNum, routineForDay, setW, shortDate, targetText, toKg, toLb, unitOf, wIn,
@@ -136,7 +138,10 @@ function Logbook({ uid }: { uid: string }) {
   const [todayKey, setTodayKey] = useState(() => keyOf(new Date()));
   const [today, setToday] = useState<Session | null>(null);
   const todayRef = useRef<Session | null>(null);
-  const [tab, setTab] = useState<"hoy" | "prog" | "plan">("hoy");
+  const [tab, setTab] = useState<"hoy" | "prog" | "plan" | "perfil">("hoy");
+  const [profile, setProfile] = useState<Profile>(() => lsGet(`lf.${uid}.profile`) || EMPTY_PROFILE);
+  const [discomforts, setDiscomforts] = useState<Discomfort[]>(() => lsGet(`lf.${uid}.discomforts`) || []);
+  const [sheet, setSheet] = useState<string | null | undefined>(undefined); // undefined = cerrado, null = sin ejercicio
   const [open, setOpen] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [progOpen, setProgOpen] = useState<string | null>(null);
@@ -166,6 +171,12 @@ function Logbook({ uid }: { uid: string }) {
       setMachines(mm); setRoutines(r.data as Routine[]); setSessions(ss);
       lsSet(K.m, mm); lsSet(K.r, r.data); lsSet(K.s, ss);
       setSync("ok"); setLoaded(true);
+      const [pf, ds] = await Promise.all([
+        supabase.from("profiles").select("*").maybeSingle(),
+        supabase.from("discomforts").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(100),
+      ]);
+      if (alive && !pf.error) { const v = { ...EMPTY_PROFILE, ...(pf.data || {}) } as Profile; setProfile(v); lsSet(`lf.${uid}.profile`, v); }
+      if (alive && !ds.error) { setDiscomforts(ds.data as Discomfort[]); lsSet(`lf.${uid}.discomforts`, ds.data); }
       flushPending();
     })().catch(() => { setSync("offline"); setLoaded(true); });
     const onOnline = () => flushPending();
@@ -240,6 +251,22 @@ function Logbook({ uid }: { uid: string }) {
     unlockAudio();
     try { if (!wake.current && (navigator as any).wakeLock) { wake.current = await (navigator as any).wakeLock.request("screen"); wake.current.addEventListener?.("release", () => (wake.current = null)); } } catch {}
     setRest({ end: Date.now() + sec * 1000, total: sec, label });
+  }
+
+  /* ---- perfil y molestias ---- */
+  async function saveProfile(p: Profile) {
+    const { user_id, updated_at, ...rest } = p as any;
+    const { data, error } = await supabase.from("profiles").upsert({ ...rest, user_id: uid }).select().single();
+    const v = { ...EMPTY_PROFILE, ...(error ? p : data) } as Profile;
+    setProfile(v); lsSet(`lf.${uid}.profile`, v);
+  }
+  function upsertDiscomfort(d: Discomfort) {
+    setDiscomforts((list) => { const n = [d, ...list.filter((x) => x.id !== d.id)].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)); lsSet(`lf.${uid}.discomforts`, n); return n; });
+  }
+  const activeFor = (m: string) => discomforts.find((d) => !d.resolved && d.machine_slug === m);
+  const SUPL = "__suplementos";
+  function toggleSupl(name: string) {
+    mutate((t) => { const x = ((t.items as any)[SUPL] ||= {}); x[name] = !x[name]; });
   }
 
   /* ---- acciones ---- */
@@ -369,6 +396,11 @@ function Logbook({ uid }: { uid: string }) {
           <div className="body">
             <img className="photo" src={img} alt={m.name} />
             <p className="how">{m.how_to}</p>
+            {activeFor(def.m) && (() => { const a = activeFor(def.m)!; return (
+              <button type="button" className="alert warn" onClick={() => setTab("perfil")}>
+                <b>Molestia activa: {a.area.toLowerCase()}{a.side ? ` ${a.side}` : ""} · {a.intensity}/10</b>
+                <span>Registrada el {shortDate(a.date)}. {a.advice ? "Toca para ver la orientación." : "Baja la carga si vuelve a aparecer."}</span>
+              </button>); })()}
             {def.k === "cardio" ? (
               <>
                 <div className="setrow" style={{ gridTemplateColumns: "1fr" }}><Stepper id={`in-${def.m}-min`} value={it.min} label="minutos" onStep={(d) => step(def.m, "min", 0, d)} onTyped={(r) => typed(def.m, "min", 0, r)} /></div>
@@ -409,6 +441,7 @@ function Logbook({ uid }: { uid: string }) {
                   ))}
                 </div>
                 <NoteInput id={`note-${def.m}`} value={it.note || ""} onSave={(v) => mutate((t) => { t.items[def.m].note = v; })} />
+                <button type="button" className="linkbtn" onClick={() => setSheet(def.m)}>¿Te molestó algo? Registrar molestia</button>
               </>
             )}
           </div>
@@ -444,6 +477,16 @@ function Logbook({ uid }: { uid: string }) {
         <div className="list">{main.map((x) => <Fragment key={x.m}>{Card({ def: x })}</Fragment>)}</div>
         {fin.length > 0 && <><h2 className="sect">Cierre</h2><div className="list">{fin.map((x) => <Fragment key={x.m}>{Card({ def: x })}</Fragment>)}</div>
           <p className="meta" style={{ margin: "8px 2px 0" }}>Después: elongación 5 min.</p></>}
+        {(profile.supplements.length > 0) && (
+          <div className="supl-today">
+            <h2 className="sect" style={{ marginTop: 0 }}>Suplementos de hoy</h2>
+            <div className="chips">{profile.supplements.filter((s) => s.name).map((s) => {
+              const on = !!(today.items as any)[SUPL]?.[s.name];
+              return <button key={s.name} type="button" className={on ? "on" : ""} aria-pressed={on} onClick={() => toggleSupl(s.name)}>{on ? "✓ " : ""}{s.name.split(" ")[0]} · {s.dose.split(" (")[0]}</button>;
+            })}</div>
+          </div>
+        )}
+        <button type="button" className="big ghost" style={{ marginTop: 14 }} onClick={() => setSheet(null)}>Registrar una molestia o dolor</button>
         <details className="food"><summary>Alimentación e hidratación <span className="meta">{r.type === "cardio" ? "día cardio" : "día fuerza"}</span></summary>
           <ul>{FOOD[r.type].map(([t, x]) => <li key={t}><b>{t}</b><span>{x}</span></li>)}</ul></details>
       </>
@@ -505,6 +548,20 @@ function Logbook({ uid }: { uid: string }) {
     );
   }
 
+  function PerfilView() {
+    const active = discomforts.filter((d) => !d.resolved);
+    return (
+      <>
+        {Header({ title: "Perfil", eyebrow: "Tú y tu salud" })}
+        <div className="list"><ProfileCard profile={profile} onSave={saveProfile} /></div>
+        <h2 className="sect">Molestias {active.length ? `· ${active.length} activa${active.length > 1 ? "s" : ""}` : ""}</h2>
+        <button type="button" className="big ghost" style={{ marginTop: 10 }} onClick={() => setSheet(null)}>Registrar una molestia o dolor</button>
+        <DiscomfortList items={discomforts} machines={machines} onChange={upsertDiscomfort} />
+        <p className="meta" style={{ margin: "14px 2px 0" }}>La orientación es una guía de entrenamiento, no un diagnóstico. Ante dolor fuerte, persistente o que te preocupe, consulta con un kinesiólogo o médico.</p>
+      </>
+    );
+  }
+
   function Plan() {
     const todayIdx = new Date().getDay();
     return (
@@ -535,13 +592,20 @@ function Logbook({ uid }: { uid: string }) {
 
   return (
     <>
-      <div className="wrap">{tab === "hoy" ? Hoy() : tab === "prog" ? Progreso() : Plan()}</div>
+      <div className="wrap">{tab === "hoy" ? Hoy() : tab === "prog" ? Progreso() : tab === "plan" ? Plan() : PerfilView()}</div>
+      {sheet !== undefined && (
+        <DiscomfortSheet machines={machines} initialMachine={sheet}
+          options={(curRoutine?.items || []).filter((x) => x.k !== "cardio").map((x) => x.m)}
+          onClose={() => setSheet(undefined)}
+          onSaved={(d) => { upsertDiscomfort(d); setSheet(undefined); setTab("perfil"); window.scrollTo(0, 0); }} />
+      )}
       <div className="dock">
         {rest && <RestBar rest={rest} onClose={closeRest} onPlus={() => setRest({ ...rest, end: Math.max(rest.end, Date.now()) + 30000, total: rest.total + 30 })} />}
         <nav className="tabs" aria-label="Secciones">
           {([["hoy", "Hoy", <path key="a" d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />],
              ["prog", "Progreso", <path key="b" d="M3 17l6-6 4 4 8-8M15 7h6v6" />],
-             ["plan", "Plan", <g key="c"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" /></g>]] as const).map(([k, l, icon]) => (
+             ["plan", "Plan", <g key="c"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" /></g>],
+             ["perfil", "Perfil", <g key="d"><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" /></g>]] as const).map(([k, l, icon]) => (
             <button key={k} type="button" aria-current={tab === k ? "page" : undefined} onClick={() => { setTab(k); setPicking(false); window.scrollTo(0, 0); }}>
               <svg viewBox="0 0 24 24">{icon}</svg>{l}
             </button>
