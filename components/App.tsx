@@ -4,11 +4,12 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import type { Session as AuthSession } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { EMPTY_PROFILE, type Discomfort, type Profile } from "@/lib/health";
-import { DiscomfortList, DiscomfortSheet, ProfileCard } from "@/components/Perfil";
+import { CheckupList, DiscomfortList, DiscomfortSheet, ProfileCard, type Checkup } from "@/components/Perfil";
 import {
   DAYS, MONTHS, FEELS, FOOD, feelName, fmtNum, fmtW, freshItem, itemDone, keyOf, lastFor, metricOf, mmss,
   parseKey, parseNum, routineForDay, setW, shortDate, targetText, toKg, toLb, unitOf, wIn,
-  type ItemDef, type ItemLog, type Machine, type Routine, type Session, type Unit,
+  activeBlock, weekOf, blockEnd, isDeload, routinesOf,
+  type Block, type ItemDef, type ItemLog, type Machine, type Routine, type Session, type Unit,
 } from "@/lib/logic";
 
 /* ---------- almacenamiento local (caché y cola sin conexión) ---------- */
@@ -134,6 +135,9 @@ function Logbook({ uid }: { uid: string }) {
   const K = { m: `lf.${uid}.machines`, r: `lf.${uid}.routines`, s: `lf.${uid}.sessions`, p: `lf.${uid}.pending` };
   const [machines, setMachines] = useState<Record<string, Machine>>(() => lsGet(K.m) || {});
   const [routines, setRoutines] = useState<Routine[]>(() => lsGet(K.r) || []);
+  const [blocks, setBlocks] = useState<Block[]>(() => lsGet(`lf.${uid}.blocks`) || []);
+  const [checkups, setCheckups] = useState<Checkup[]>(() => lsGet(`lf.${uid}.checkups`) || []);
+  const [planBlock, setPlanBlock] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Record<string, Session>>(() => lsGet(K.s) || {});
   const [todayKey, setTodayKey] = useState(() => keyOf(new Date()));
   const [today, setToday] = useState<Session | null>(null);
@@ -154,13 +158,16 @@ function Logbook({ uid }: { uid: string }) {
     let alive = true;
     (async () => {
       await supabase.rpc("seed_defaults");
-      const [m, r, s] = await Promise.all([
+      await supabase.rpc("seed_block_one");
+      const [m, r, s, b] = await Promise.all([
         supabase.from("machines").select("slug,name,muscle_group,how_to,unit,settings,photo_path"),
-        supabase.from("routines").select("slug,name,type,weekdays,duration_min,items,position").order("position"),
+        supabase.from("routines").select("slug,name,type,weekdays,duration_min,items,position,block_id").order("position"),
         supabase.from("sessions").select("date,routine_slug,items,client_updated_at").order("date", { ascending: false }).limit(400),
+        supabase.from("blocks").select("id,name,start_date,weeks,deload_week,focus").order("start_date"),
       ]);
       if (!alive) return;
-      if (m.error || r.error || s.error) { setSync("offline"); setLoaded(true); return; }
+      if (m.error || r.error || s.error || b.error) { setSync("offline"); setLoaded(true); return; }
+      setBlocks(b.data as Block[]); lsSet(`lf.${uid}.blocks`, b.data);
       const mm: Record<string, Machine> = {};
       (m.data as Machine[]).forEach((x) => (mm[x.slug] = x));
       const ss: Record<string, Session> = {};
@@ -171,10 +178,12 @@ function Logbook({ uid }: { uid: string }) {
       setMachines(mm); setRoutines(r.data as Routine[]); setSessions(ss);
       lsSet(K.m, mm); lsSet(K.r, r.data); lsSet(K.s, ss);
       setSync("ok"); setLoaded(true);
-      const [pf, ds] = await Promise.all([
+      const [pf, ds, ck] = await Promise.all([
         supabase.from("profiles").select("*").maybeSingle(),
         supabase.from("discomforts").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(100),
+        supabase.from("checkups").select("*").order("date", { ascending: false }).limit(100),
       ]);
+      if (alive && !ck.error) { setCheckups(ck.data as Checkup[]); lsSet(`lf.${uid}.checkups`, ck.data); }
       if (alive && !pf.error) { const v = { ...EMPTY_PROFILE, ...(pf.data || {}) } as Profile; setProfile(v); lsSet(`lf.${uid}.profile`, v); }
       if (alive && !ds.error) { setDiscomforts(ds.data as Discomfort[]); lsSet(`lf.${uid}.discomforts`, ds.data); }
       flushPending();
@@ -192,19 +201,19 @@ function Logbook({ uid }: { uid: string }) {
     const t: Session = base ? structuredClone(base) : { date: todayKey, routine_slug: rk, items: {}, client_updated_at: 0 };
     if (rk) t.routine_slug = rk;
     const r = t.routine_slug ? routineBySlug[t.routine_slug] : null;
-    if (r) r.items.forEach((def) => { if (!t.items[def.m]) t.items[def.m] = freshItem(def, sessions, machines[def.m], todayKey); });
+    if (r) r.items.forEach((def) => { if (!t.items[def.m]) t.items[def.m] = freshItem(def, sessions, machines[def.m], todayKey, blocks); });
     return t;
-  }, [todayKey, routineBySlug, sessions, machines]);
+  }, [todayKey, routineBySlug, sessions, machines, blocks]);
 
   useEffect(() => {
     if (!routines.length) return;
     const cur = todayRef.current;
     if (cur && cur.date === todayKey && (sessions[todayKey]?.client_updated_at || 0) <= cur.client_updated_at) return;
     const base = sessions[todayKey] || null;
-    const rk = base?.routine_slug ?? routineForDay(routines, parseKey(todayKey))?.slug ?? null;
+    const rk = base?.routine_slug ?? routineForDay(routines, parseKey(todayKey), blocks)?.slug ?? null;
     const t = buildToday(rk, base);
     todayRef.current = t; setToday(t); setOpen(null);
-  }, [routines, sessions, todayKey, buildToday]);
+  }, [routines, blocks, sessions, todayKey, buildToday]);
 
   /* ---- guardado ---- */
   const saveT = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -271,6 +280,8 @@ function Logbook({ uid }: { uid: string }) {
 
   /* ---- acciones ---- */
   const curRoutine = today?.routine_slug ? routineBySlug[today.routine_slug] : null;
+  const curBlock = activeBlock(blocks, todayKey);
+  const deloadNow = isDeload(blocks, todayKey);
   const nextUndone = (t: Session) => curRoutine?.items.find((d) => !itemDone(d, t.items[d.m])) || null;
   function chooseRoutine(slug: string) {
     const t = buildToday(slug, todayRef.current && todayRef.current.date === todayKey ? todayRef.current : sessions[todayKey]);
@@ -341,7 +352,7 @@ function Logbook({ uid }: { uid: string }) {
   function Picker({ current }: { current: string | null }) {
     return (
       <div className="picker">
-        {routines.map((r) => (
+        {routinesOf(routines, curBlock?.id).map((r) => (
           <button key={r.slug} type="button" className={r.slug === current ? "on" : ""} onClick={() => chooseRoutine(r.slug)}>
             {r.name}<span>{r.weekdays.map((x) => DAYS[x].slice(0, 3)).join(" · ")}</span>
           </button>
@@ -351,7 +362,7 @@ function Logbook({ uid }: { uid: string }) {
   }
 
   function Prev({ def }: { def: ItemDef }) {
-    const last = lastFor(sessions, def.m, todayKey);
+    const last = lastFor(sessions, def.m, todayKey, (k) => isDeload(blocks, k));
     if (!last) return <div className="prev">Primera vez que registras este ejercicio. Anota el peso con el que partes.</div>;
     const it = last.it;
     let line = "", hint: string | null = null;
@@ -363,7 +374,7 @@ function Logbook({ uid }: { uid: string }) {
       const kg = best?.kg || 0;
       line = `${kg ? fmtW(best.kg, best.lb, u) + " × " : ""}${ds.map((x) => x.reps).join(", ")} reps`;
       const top = def.reps![1];
-      if (kg && (it.feel === "facil" || (ds.length >= (def.sets || 3) && ds.every((x) => (x.reps || 0) >= top))))
+      if (kg && !deloadNow && (it.feel === "facil" || (ds.length >= (def.sets || 3) && ds.every((x) => (x.reps || 0) >= top))))
         hint = `Te costó poco: prueba ${u === "lb" ? fmtW(null, (best.lb ?? toLb(kg)) + 5, "lb") : fmtW(kg + 2.5, null, "kg")} hoy.`;
     }
     return (
@@ -388,13 +399,14 @@ function Logbook({ uid }: { uid: string }) {
         <button type="button" className="head" aria-expanded={isOpen}
           onClick={() => { setOpen(isOpen ? "" : def.m); setTimeout(() => document.getElementById("card-" + def.m)?.scrollIntoView({ block: "start", behavior: "smooth" }), 30); }}>
           <img className="thumb" src={img} alt="" />
-          <div><div className="name">{def.label || m.name}</div><div className="meta">{targetText(def)}</div></div>
+          <div><div className="name">{def.label || m.name}</div><div className="meta">{targetText(it.sets ? { ...def, sets: it.sets.length } : def)}</div></div>
           {done ? <span className="tick" aria-label="Hecho">✓</span> : def.k === "cardio" ? <span /> :
             <span className="dots">{it.sets!.map((s, i) => <i key={i} className={s.done ? "on" : ""} />)}</span>}
         </button>
         {isOpen && (
           <div className="body">
             <img className="photo" src={img} alt={m.name} />
+            {def.note && <p className="tip">{def.note}</p>}
             <p className="how">{m.how_to}</p>
             {activeFor(def.m) && (() => { const a = activeFor(def.m)!; return (
               <button type="button" className="alert warn" onClick={() => setTab("perfil")}>
@@ -450,6 +462,21 @@ function Logbook({ uid }: { uid: string }) {
     );
   }
 
+  function BlockLine() {
+    if (!curBlock) return null;
+    const w = weekOf(curBlock, todayKey), past = w > curBlock.weeks;
+    const next = blocks.find((b) => b.start_date > todayKey);
+    const soon = next && (parseKey(next.start_date).getTime() - parseKey(todayKey).getTime()) / 864e5 <= 7;
+    return (
+      <>
+        <div className="blk num">{curBlock.name} · {past ? `terminó (semana ${w})` : `semana ${w} de ${curBlock.weeks}`}
+          {soon && next ? ` · ${next.name} parte el ${shortDate(next.start_date)}` : ""}</div>
+        {deloadNow && <div className="alert warn" style={{ marginTop: 8 }}><b>Semana de descarga</b><span>Una serie menos y cerca del 60 % del peso. La idea es recuperarse, no exigirse: termina cada serie con varias repeticiones de sobra.</span></div>}
+        {past && !next && <div className="alert warn" style={{ marginTop: 8 }}><b>Bloque cumplido</b><span>Es buen momento para planificar el siguiente bloque.</span></div>}
+      </>
+    );
+  }
+
   function Hoy() {
     const d = parseKey(todayKey);
     const eyebrow = `${DAYS[d.getDay()]} ${d.getDate()} de ${MONTHS[d.getMonth()]}`;
@@ -461,6 +488,7 @@ function Logbook({ uid }: { uid: string }) {
       Header({ title: "", eyebrow, children: <>
         <div className="top-row"><h1>{r ? r.name : "Día de descanso"}</h1>
           <button className="chip-btn" type="button" onClick={() => setPicking(!picking)}>{picking ? "Cerrar" : "Cambiar"}</button></div>
+        {BlockLine()}
         {r && <div className="prog"><div className="bar"><b style={{ width: `${total ? (100 * done) / total : 0}%` }} /></div><span className="num">{done} de {total}</span></div>}
       </> })
     );
@@ -548,12 +576,24 @@ function Logbook({ uid }: { uid: string }) {
     );
   }
 
+  function upsertCheckup(c: Checkup) {
+    const v = [c, ...checkups.filter((x) => x.id !== c.id)].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    setCheckups(v); lsSet(`lf.${uid}.checkups`, v);
+    // el peso del control más reciente pasa al perfil
+    if (c.weight_kg != null && v[0].id === c.id && Number(c.weight_kg) !== Number(profile.weight_kg)) saveProfile({ ...profile, weight_kg: Number(c.weight_kg) });
+  }
+  function removeCheckup(id: string) {
+    const v = checkups.filter((x) => x.id !== id); setCheckups(v); lsSet(`lf.${uid}.checkups`, v);
+  }
+
   function PerfilView() {
     const active = discomforts.filter((d) => !d.resolved);
     return (
       <>
         {Header({ title: "Perfil", eyebrow: "Tú y tu salud" })}
         <div className="list"><ProfileCard profile={profile} onSave={saveProfile} /></div>
+        <h2 className="sect">Controles con profesionales</h2>
+        <CheckupList items={checkups} onSaved={upsertCheckup} onDeleted={removeCheckup} />
         <h2 className="sect">Molestias {active.length ? `· ${active.length} activa${active.length > 1 ? "s" : ""}` : ""}</h2>
         <button type="button" className="big ghost" style={{ marginTop: 10 }} onClick={() => setSheet(null)}>Registrar una molestia o dolor</button>
         <DiscomfortList items={discomforts} machines={machines} onChange={upsertDiscomfort} />
@@ -564,11 +604,30 @@ function Logbook({ uid }: { uid: string }) {
 
   function Plan() {
     const todayIdx = new Date().getDay();
+    const sel = blocks.find((b) => b.id === planBlock) || curBlock || blocks[blocks.length - 1] || null;
+    const list = sel ? routinesOf(routines, sel.id) : routines;
+    const status = (b: Block) => (b.start_date > todayKey ? "próximo" : b.id === curBlock?.id ? "actual" : "anterior");
+    const canDo = !sel || sel.id === curBlock?.id;
     return (
       <>
-        {Header({ title: "Plan", eyebrow: "Semana tipo" })}
+        {Header({ title: "Plan", eyebrow: sel ? `${sel.name} · ${status(sel)}` : "Semana tipo" })}
+        {blocks.length > 1 && (
+          <div className="picker blocks" role="group" aria-label="Bloques">
+            {blocks.map((b) => (
+              <button key={b.id} type="button" className={b.id === sel?.id ? "on" : ""} aria-pressed={b.id === sel?.id} onClick={() => { setPlanBlock(b.id); setPlanOpen(null); }}>
+                {b.name}<span>{status(b)} · desde {shortDate(b.start_date)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {sel && (
+          <div className="blockinfo">
+            <div className="meta num">{shortDate(sel.start_date)} → {shortDate(blockEnd(sel))} · {sel.weeks} semanas{sel.deload_week ? ` · descarga en semana ${sel.deload_week}` : ""}</div>
+            {sel.focus && <p>{sel.focus}</p>}
+          </div>
+        )}
         <div className="list">{[1, 2, 3, 4, 5, 6, 0].map((di) => {
-          const r = routineForDay(routines, new Date(2026, 0, 4 + di)); const isOpen = planOpen === di; // 4 ene 2026 = domingo
+          const r = list.find((x) => x.weekdays.includes(di)) || null; const isOpen = planOpen === di;
           return (
             <section className="card" key={di}>
               <button type="button" className={`day ${di === todayIdx ? "today" : ""}`} aria-expanded={isOpen} onClick={() => setPlanOpen(isOpen ? null : di)}>
@@ -577,8 +636,8 @@ function Logbook({ uid }: { uid: string }) {
                 <span className="meta">{r ? (isOpen ? "▴" : "▾") : ""}</span>
               </button>
               {isOpen && r && <>
-                <ol className="plist">{r.items.map((x, i) => <li key={i}>{x.label || machines[x.m]?.name} <span>· {targetText(x)}</span></li>)}</ol>
-                <div style={{ padding: "0 12px 12px" }}><button type="button" className="big ghost" onClick={() => chooseRoutine(r.slug)}>Hacer esta rutina hoy</button></div>
+                <ol className="plist">{r.items.map((x, i) => <li key={i}>{x.label || machines[x.m]?.name} <span>· {targetText(x)}</span>{x.note && <em>{x.note}</em>}</li>)}</ol>
+                {canDo && <div style={{ padding: "0 12px 12px" }}><button type="button" className="big ghost" onClick={() => chooseRoutine(r.slug)}>Hacer esta rutina hoy</button></div>}
               </>}
             </section>
           );

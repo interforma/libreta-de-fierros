@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { redFlag, bmi, monthsSince, GOALS, type Discomfort, type Profile } from "@/lib/health";
+import { activeBlock, isDeload, weekOf, type Block } from "@/lib/logic";
 
 // Orientación con Claude para una molestia registrada.
 // Usa el token del usuario: Supabase aplica RLS, así que solo lee y escribe sus propios datos.
@@ -14,7 +15,7 @@ Hoy: qué hacer en la sesión de hoy con esa zona (seguir, bajar carga, evitar e
 Ajustes: técnica, rango de movimiento, carga o repeticiones que conviene cambiar.
 Alternativas: 1 o 2 ejercicios del catálogo del usuario que cargan menos la zona.
 Consulta si: señales concretas para ir a un kinesiólogo o médico (dolor que no baja en 1–2 semanas, hinchazón, pérdida de fuerza, dolor nocturno, adormecimiento, etc.).
-Ten en cuenta la edad, la trayectoria y las condiciones del perfil. Si la información no alcanza, dilo y sé conservador.`;
+Ten en cuenta la edad, la trayectoria, las condiciones del perfil, el bloque de entrenamiento en curso y las indicaciones de sus profesionales (no las contradigas). Si la información no alcanza, dilo y sé conservador.`;
 
 export async function POST(req: Request) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -30,12 +31,14 @@ export async function POST(req: Request) {
     auth: { persistSession: false },
   });
 
-  const [{ data: d }, { data: p }, { data: machines }, { data: recent }, { data: history }] = await Promise.all([
+  const [{ data: d }, { data: p }, { data: machines }, { data: recent }, { data: history }, { data: blocks }, { data: checks }] = await Promise.all([
     db.from("discomforts").select("*").eq("id", id).maybeSingle(),
     db.from("profiles").select("*").maybeSingle(),
     db.from("machines").select("slug,name,muscle_group"),
     db.from("set_log").select("date,machine_slug,unit,kg,lb,reps,done,feel").eq("done", true).order("date", { ascending: false }).limit(60),
     db.from("discomforts").select("date,area,side,intensity,resolved").order("date", { ascending: false }).limit(10),
+    db.from("blocks").select("id,name,start_date,weeks,deload_week,focus"),
+    db.from("checkups").select("date,kind,weight_kg,body_fat_pct,muscle_kg,waist_cm,notes").order("date", { ascending: false }).limit(3),
   ]);
   if (!d) return NextResponse.json({ error: "No encontré esa molestia." }, { status: 404 });
   const dis = d as Discomfort;
@@ -50,11 +53,22 @@ export async function POST(req: Request) {
   const b = prof.height_cm && prof.weight_kg ? bmi(prof as Profile) : null;
   const related = (recent || []).filter((r: any) => !dis.machine_slug || r.machine_slug === dis.machine_slug).slice(0, 12);
 
+  const bl = activeBlock((blocks || []) as Block[], dis.date);
+  const blockLine = bl
+    ? `BLOQUE ACTUAL: ${bl.name}, semana ${weekOf(bl, dis.date)} de ${bl.weeks}${isDeload((blocks || []) as Block[], dis.date) ? " (semana de descarga)" : ""}. Enfoque: ${bl.focus}`
+    : ``;
+  const ckLines = (checks || []).map((c: any) => {
+    const ms = [c.weight_kg != null && `peso ${c.weight_kg} kg`, c.body_fat_pct != null && `grasa ${c.body_fat_pct} %`, c.muscle_kg != null && `masa muscular ${c.muscle_kg} kg`, c.waist_cm != null && `cintura ${c.waist_cm} cm`].filter(Boolean).join(", ");
+    return `${c.date} ${c.kind}${ms ? `: ${ms}` : ""}${c.notes ? `. Indicaciones: ${String(c.notes).slice(0, 300)}` : ""}`;
+  });
+
   const context = [
     `PERFIL: ${prof.sex || "sexo no indicado"}, ${prof.age ?? "?"} años, ${prof.height_cm ?? "?"} cm, ${prof.weight_kg ?? "?"} kg${b ? ` (IMC ${b.toFixed(1)})` : ""}.`,
     `Trayectoria: ${prof.sport_history || "no indicada"}. En gimnasio hace ${monthsSince(prof.gym_since ?? null) ?? "?"} meses, ${prof.days_per_week ?? "?"} días por semana.`,
     `Objetivo: ${GOALS.find((g) => g[0] === prof.goal)?.[1] || "no indicado"}. Condiciones o lesiones: ${prof.conditions || "ninguna indicada"}.`,
     `Suplementos: ${(prof.supplements || []).map((s) => `${s.name} ${s.dose}`).join("; ") || "ninguno"}.`,
+    blockLine,
+    ckLines.length ? `CONTROLES CON PROFESIONALES (más reciente primero): ${ckLines.join(" | ")}` : ``,
     ``,
     `MOLESTIA (${dis.date}): zona ${dis.area}${dis.side ? ` ${dis.side}` : ""}, intensidad ${dis.intensity}/10, ${dis.moment || "momento no indicado"}${dis.machine_slug ? `, relacionada con ${name(dis.machine_slug)}` : ""}.`,
     `Descripción del usuario: ${dis.note || "(sin descripción)"}`,

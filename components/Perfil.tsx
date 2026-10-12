@@ -195,3 +195,106 @@ export function DiscomfortList({ items, machines, onChange }: { items: Discomfor
     })}</div>
   );
 }
+
+/* ---------------- Controles con profesionales ---------------- */
+export type Checkup = {
+  id: string; date: string; kind: "nutricionista" | "kinesiologo" | "medico" | "entrenador" | "otro"; professional: string;
+  weight_kg: number | null; body_fat_pct: number | null; muscle_kg: number | null; waist_cm: number | null;
+  notes: string; next_date: string | null;
+};
+export const KINDS: [Checkup["kind"], string][] = [["nutricionista", "Nutricionista"], ["kinesiologo", "Kinesiólogo"], ["medico", "Médico"], ["entrenador", "Entrenador"], ["otro", "Otro"]];
+const METRICS: [keyof Checkup, string, string][] = [["weight_kg", "Peso", "kg"], ["body_fat_pct", "Grasa", "%"], ["muscle_kg", "Masa muscular", "kg"], ["waist_cm", "Cintura", "cm"]];
+const todayIso = () => new Date().toLocaleDateString("en-CA");
+const blank = (): Omit<Checkup, "id"> => ({ date: todayIso(), kind: "nutricionista", professional: "", weight_kg: null, body_fat_pct: null, muscle_kg: null, waist_cm: null, notes: "", next_date: null });
+
+function CheckupForm({ initial, onCancel, onSaved }: { initial: Partial<Checkup>; onCancel: () => void; onSaved: (c: Checkup) => void }) {
+  const [c, setC] = useState({ ...blank(), ...initial });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const set = (k: keyof Checkup, v: any) => setC((x) => ({ ...x, [k]: v }));
+  async function save(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setErr(null);
+    const { id, ...row } = c as any;
+    const q = id ? supabase.from("checkups").update(row).eq("id", id) : supabase.from("checkups").insert(row);
+    const { data, error } = await q.select().single();
+    setBusy(false);
+    if (error) { setErr("No se pudo guardar. Revisa tu conexión e intenta de nuevo."); return; }
+    onSaved(data as Checkup);
+  }
+  return (
+    <form className="card pcard form" onSubmit={save}>
+      <div className="grid2">
+        <label className="field">Fecha<input id="ck-date" type="date" required value={c.date} onChange={(e) => set("date", e.target.value)} /></label>
+        <label className="field">Con<select id="ck-kind" value={c.kind} onChange={(e) => set("kind", e.target.value)}>{KINDS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+      </div>
+      <label className="field">Profesional (opcional)<input id="ck-pro" placeholder="Nombre o lugar" value={c.professional} onChange={(e) => set("professional", e.target.value)} /></label>
+      <div className="grid2">
+        {METRICS.map(([k, l, u]) => (
+          <label className="field" key={k}>{l} ({u})<input id={`ck-${k}`} inputMode="decimal" value={c[k] == null ? "" : fmtNum(c[k] as number)} onChange={(e) => set(k, parseNum(e.target.value))} /></label>
+        ))}
+      </div>
+      <label className="field">Indicaciones recibidas<textarea id="ck-notes" rows={4} placeholder="Ej.: subir proteína a 1,6 g/kg, agregar colación después de entrenar" value={c.notes} onChange={(e) => set("notes", e.target.value)} /></label>
+      <label className="field">Próximo control (opcional)<input id="ck-next" type="date" value={c.next_date || ""} onChange={(e) => set("next_date", e.target.value || null)} /></label>
+      {err && <p className="msg">{err}</p>}
+      <div className="grid2">
+        <button type="button" className="big ghost" onClick={onCancel}>Cancelar</button>
+        <button type="submit" className="big" disabled={busy}>{busy ? "Guardando…" : "Guardar control"}</button>
+      </div>
+    </form>
+  );
+}
+
+export function CheckupList({ items, onSaved, onDeleted }: { items: Checkup[]; onSaved: (c: Checkup) => void; onDeleted: (id: string) => void }) {
+  const [editing, setEditing] = useState<string | null>(null); // "new" o id
+  const today = todayIso();
+  const next = items.map((x) => x.next_date).filter((d): d is string => !!d && d >= today).sort()[0];
+  const kindName = (k: string) => KINDS.find((x) => x[0] === k)?.[1] || k;
+  // evolución: primer y último valor de cada medida (orden cronológico)
+  const evo = METRICS.map(([k, l, u]) => {
+    const pts = items.filter((x) => x[k] != null).sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (pts.length < 2) return null;
+    const a = Number(pts[0][k]), b = Number(pts[pts.length - 1][k]), d = Math.round((b - a) * 10) / 10;
+    return { l, u, a, b, d, from: pts[0].date };
+  }).filter(Boolean) as { l: string; u: string; a: number; b: number; d: number; from: string }[];
+
+  async function del(c: Checkup) {
+    if (!confirm(`¿Borrar el control del ${shortDate(c.date)}?`)) return;
+    const { error } = await supabase.from("checkups").delete().eq("id", c.id);
+    if (!error) onDeleted(c.id);
+  }
+
+  return (
+    <>
+      {next && <div className="alert warn" style={{ marginTop: 10 }}><b>Próximo control: {shortDate(next)}</b><span>Lleva anotado cómo te has sentido y tus pesos de trabajo; la app te los muestra en Progreso.</span></div>}
+      {editing === "new"
+        ? <div className="list"><CheckupForm initial={{}} onCancel={() => setEditing(null)} onSaved={(c) => { onSaved(c); setEditing(null); }} /></div>
+        : <button type="button" className="big ghost" style={{ marginTop: 10 }} onClick={() => setEditing("new")}>Registrar un control</button>}
+      {evo.length > 0 && (
+        <section className="card pcard" style={{ marginTop: 10 }}>
+          <h3 className="sub" style={{ marginTop: 0 }}>Evolución desde {shortDate(evo[0].from)}</h3>
+          <div className="kvs">{evo.map((e) => (
+            <div className="kv" key={e.l}><span>{e.l}</span><span className="num">{fmtNum(e.a)} → {fmtNum(e.b)} {e.u} <b className={e.d === 0 ? "" : "delta"}>({e.d > 0 ? "+" : ""}{fmtNum(e.d)})</b></span></div>
+          ))}</div>
+        </section>
+      )}
+      {!items.length && editing !== "new" && <div className="empty">Sin controles todavía. Cuando vayas al nutricionista u otro profesional, anota aquí las medidas y lo que te indicó: queda el historial y la orientación con IA lo toma en cuenta.</div>}
+      <div className="list">{items.map((c) => editing === c.id
+        ? <CheckupForm key={c.id} initial={c} onCancel={() => setEditing(null)} onSaved={(x) => { onSaved(x); setEditing(null); }} />
+        : (
+          <section className="card pcard" key={c.id}>
+            <div className="pcard-head">
+              <div><div className="name">{kindName(c.kind)}{c.professional ? ` · ${c.professional}` : ""}</div><div className="meta">{shortDate(c.date)}{c.next_date ? ` · próximo ${shortDate(c.next_date)}` : ""}</div></div>
+              <button type="button" className="chip-btn" onClick={() => setEditing(c.id)}>Editar</button>
+            </div>
+            {METRICS.some(([k]) => c[k] != null) && (
+              <div className="stats" style={{ marginTop: 0 }}>{METRICS.filter(([k]) => c[k] != null).map(([k, l, u]) => (
+                <div className="stat" key={k}><div className="v">{fmtNum(Number(c[k]))}</div><div className="k">{u === "%" ? "% grasa" : `${u} ${l.toLowerCase()}`}</div></div>
+              ))}</div>
+            )}
+            {c.notes && <><h3 className="sub">Indicaciones</h3><p className="how" style={{ whiteSpace: "pre-wrap" }}>{c.notes}</p></>}
+            <button type="button" className="linkbtn" onClick={() => del(c)}>Borrar</button>
+          </section>
+        ))}</div>
+    </>
+  );
+}

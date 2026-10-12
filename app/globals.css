@@ -188,3 +188,13 @@ img{max-width:100%}
 .sheet-bg{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
 .sheet{background:var(--bg);width:100%;max-width:560px;max-height:92dvh;overflow-y:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
 .sheet-title{font-family:var(--display);font-size:26px;font-weight:700;margin:0}
+
+/* bloques y controles */
+.blk{font-size:14px;color:var(--muted);margin-top:4px}
+.tip{font-size:15px;margin:0;padding:8px 10px;border-left:3px solid var(--accent);background:var(--accent-soft);border-radius:0 8px 8px 0;color:var(--ink)}
+.plist li em{display:block;font-style:normal;font-size:13px;color:var(--muted)}
+.picker.blocks{flex-direction:row}
+.picker.blocks button{flex:1;flex-direction:column;gap:2px;min-height:44px}
+.blockinfo{margin-top:12px;padding:0 2px}
+.blockinfo p{margin:6px 0 0;font-size:15px;line-height:1.4}
+.delta{font-weight:600}
