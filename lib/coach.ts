@@ -18,13 +18,17 @@ export function userDb(req: Request): SupabaseClient | null {
   });
 }
 
+// Ojo: los modelos Claude 5.5 piensan antes de responder (thinking adaptativo por defecto) y ese
+// razonamiento cuenta dentro de max_tokens. Con un límite chico no queda espacio para el texto,
+// así que el largo de la respuesta se controla en el prompt y max_tokens lleva holgura.
+const MIN_TOKENS = 4000;
 export async function askClaude(opts: { model: string; system: string; content: string; maxTokens: number }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new CoachError("La IA aún no está activada (falta la clave de la API de Claude en Vercel).", 503);
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: opts.model, max_tokens: opts.maxTokens, system: opts.system, messages: [{ role: "user", content: opts.content }] }),
+    body: JSON.stringify({ model: opts.model, max_tokens: Math.max(opts.maxTokens, MIN_TOKENS), system: opts.system, messages: [{ role: "user", content: opts.content }] }),
   });
   if (!r.ok) {
     console.error("anthropic", r.status, (await r.text()).slice(0, 300));
@@ -32,7 +36,10 @@ export async function askClaude(opts: { model: string; system: string; content: 
   }
   const j = await r.json();
   const text = (j.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n").trim();
-  if (!text) throw new CoachError("La IA no devolvió una respuesta.", 502);
+  if (!text) {
+    console.error("anthropic sin texto", opts.model, j.stop_reason, (j.content || []).map((c: any) => c.type).join(","));
+    throw new CoachError("La IA no devolvió una respuesta. Intenta de nuevo.", 502);
+  }
   return text;
 }
 

@@ -82,7 +82,7 @@ export async function POST(req: Request) {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: MODEL, max_tokens: 700, system: SYSTEM, messages: [{ role: "user", content: context }] }),
+    body: JSON.stringify({ model: MODEL, max_tokens: 4000 /* incluye el razonamiento previo del modelo */, system: SYSTEM, messages: [{ role: "user", content: context }] }),
   });
   if (!r.ok) {
     const t = await r.text();
@@ -91,6 +91,7 @@ export async function POST(req: Request) {
   }
   const j = await r.json();
   const advice = (j.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n").trim();
+  if (!advice) console.error("anthropic sin texto", MODEL, j.stop_reason, (j.content || []).map((c: any) => c.type).join(","));
   if (!advice) return NextResponse.json({ error: "La IA no devolvió una respuesta." }, { status: 502 });
 
   await db.from("discomforts").update({ advice, advice_at: new Date().toISOString() }).eq("id", id);
