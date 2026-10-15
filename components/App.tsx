@@ -91,13 +91,14 @@ function Stepper({ id, value, label, sub, stepLabel, onStep, onTyped }: { id: st
     </div>
   );
 }
-function NoteInput({ id, value, onSave }: { id: string; value: string; onSave: (v: string) => void }) {
+function NoteInput({ id, value, onSave, placeholder = "Nota: asiento 4, agarre ancho…" }: { id: string; value: string; onSave: (v: string) => void; placeholder?: string }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
-  return <input className="note" id={id} placeholder="Nota: asiento 4, agarre ancho…" value={v}
+  return <input className="note" id={id} placeholder={placeholder} value={v}
     onChange={(e) => setV(e.target.value)} onBlur={() => { if (v !== value) onSave(v.slice(0, 200)); }} />;
 }
-function RestBar({ rest, onPlus, onClose }: { rest: { end: number; total: number; label: string }; onPlus: () => void; onClose: () => void }) {
+type Rest = { end: number; total: number; label: string; water?: boolean };
+function RestBar({ rest, onPlus, onClose }: { rest: Rest; onPlus: () => void; onClose: () => void }) {
   const [now, setNow] = useState(Date.now());
   const fired = useRef(false);
   useEffect(() => { fired.current = false; setNow(Date.now()); const iv = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(iv); }, [rest]);
@@ -110,7 +111,8 @@ function RestBar({ rest, onPlus, onClose }: { rest: { end: number; total: number
     <div className={`timer ${left <= 0 ? "end" : ""}`} role="timer" aria-live="off">
       <div className="fill" style={{ width: `${left <= 0 ? 100 : 100 * (1 - left / rest.total)}%` }} />
       <div className="t">{left <= 0 ? "0:00" : mmss(left)}</div>
-      <div className="l">{left <= 0 ? "Listo: a la siguiente serie" : rest.label}</div>
+      <div className="l">{left <= 0 ? "Listo: a la siguiente serie" : rest.label}
+        {rest.water && left > 0 && <span className="water">Toma unos sorbos de agua (150–250 ml)</span>}</div>
       <div className="btns">
         <button type="button" onClick={onPlus}>+30 segundos</button>
         <button type="button" className="go" onClick={onClose}>{left <= 0 ? "Cerrar" : "Saltar descanso"}</button>
@@ -131,6 +133,17 @@ function beep() {
   } catch {}
   try { if (pr.vibrate) navigator.vibrate?.([300, 120, 300]); } catch {}
 }
+
+/* ---------- rutas de IA (entrenador) ---------- */
+async function callCoach<T>(path: string, body: unknown): Promise<T> {
+  const { data } = await supabase.auth.getSession();
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session?.access_token}` }, body: JSON.stringify(body) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.error || "No se pudo conectar con el entrenador.");
+  return j as T;
+}
+type Balance = { text: string; done: number; planned: number; at: string };
+const COSTS: [string, string][] = [["nada", "Nada"], ["registrar", "Registrar las series"], ["maquina", "Alguna máquina"], ["cansancio", "Terminar la rutina"]];
 
 /* ===================================================================== */
 type Sync = "busy" | "ok" | "offline" | "error";
@@ -157,6 +170,10 @@ function Logbook({ uid }: { uid: string }) {
   const [sync, setSync] = useState<Sync>("busy");
   const [loaded, setLoaded] = useState(false);
   const [prefs, setPrefsState] = useState<Prefs>(() => getPrefs());
+  const [balances, setBalances] = useState<Record<string, Balance>>(() => lsGet(`lf.${uid}.balance`) || {});
+  const [busyBalance, setBusyBalance] = useState(false);
+  const [balanceErr, setBalanceErr] = useState<string | null>(null);
+  const [coach, setCoach] = useState<{ busy: boolean; err: string | null }>({ busy: false, err: null });
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => { const n = { ...prefs, [k]: v }; setPrefsState(n); savePrefs(n); };
 
   /* ---- carga inicial ---- */
@@ -251,21 +268,33 @@ function Logbook({ uid }: { uid: string }) {
   function mutate(fn: (t: Session) => void) {
     if (!todayRef.current) return;
     const t = structuredClone(todayRef.current);
-    fn(t); commit(t);
+    const meta = t.items as any;
+    if (!meta.__t0) meta.__t0 = Date.now();
+    fn(t);
+    const r = t.routine_slug ? routineBySlug[t.routine_slug] : null;
+    if (r && !meta.__t1 && r.items.every((d) => itemDone(d, t.items[d.m]))) meta.__t1 = Date.now();
+    commit(t);
   }
+  // Registro silencioso de fricción: cuántas veces se deshace, se cambia de unidad o se escribe a mano.
+  function track(t: Session, k: string) { const u = ((t.items as any).__uso ||= {}); u[k] = (u[k] || 0) + 1; }
   async function setMachineUnit(slug: string, unit: Unit) {
     setMachines((m) => { const n = { ...m, [slug]: { ...m[slug], unit } }; lsSet(K.m, n); return n; });
     await supabase.from("machines").update({ unit }).eq("slug", slug);
   }
 
   /* ---- descanso ---- */
-  const [rest, setRest] = useState<{ end: number; total: number; label: string } | null>(null);
+  const [rest, setRest] = useState<Rest | null>(null);
+  const lastWater = useRef(0);
   const wake = useRef<any>(null);
   const closeRest = useCallback(() => setRest(null), []);
   async function startRest(sec: number, label: string) {
     unlockAudio();
     try { if (!wake.current && (navigator as any).wakeLock) { wake.current = await (navigator as any).wakeLock.request("screen"); wake.current.addEventListener?.("release", () => (wake.current = null)); } } catch {}
-    setRest({ end: Date.now() + sec * 1000, total: sec, label });
+    const now = Date.now();
+    if (!lastWater.current) lastWater.current = Number((todayRef.current?.items as any)?.__t0) || now;
+    const water = now - lastWater.current > 18 * 60000;
+    if (water) lastWater.current = now;
+    setRest({ end: now + sec * 1000, total: sec, label, water });
   }
 
   /* ---- perfil y molestias ---- */
@@ -291,7 +320,7 @@ function Logbook({ uid }: { uid: string }) {
   const nextUndone = (t: Session) => curRoutine?.items.find((d) => !itemDone(d, t.items[d.m])) || null;
   function chooseRoutine(slug: string) {
     const t = buildToday(slug, todayRef.current && todayRef.current.date === todayKey ? todayRef.current : sessions[todayKey]);
-    if (t) commit(t);
+    if (t) { track(t, "cambio_rutina"); commit(t); }
     setOpen(null); setPicking(false); setTab("hoy"); window.scrollTo(0, 0);
   }
   function step(m: string, f: "w" | "reps" | "secs" | "min", i: number, dir: 1 | -1) {
@@ -309,14 +338,14 @@ function Logbook({ uid }: { uid: string }) {
     const v = parseNum(raw); const val = v == null ? null : Math.max(0, v);
     mutate((t) => {
       const it = t.items[m];
-      if (f === "w") { const u = unitOf(it); setW(it.sets![i], u, val); it.sets!.forEach((x, j) => { if (j > i && !x.done) setW(x, u, val); }); }
+      if (f === "w") { const u = unitOf(it); setW(it.sets![i], u, val); it.sets!.forEach((x, j) => { if (j > i && !x.done) setW(x, u, val); }); track(t, "peso_escrito"); }
       else if (f === "min") it.min = val;
-      else (it.sets![i] as any)[f] = val;
+      else { (it.sets![i] as any)[f] = val; track(t, f === "reps" ? "reps_escritas" : "segundos_escritos"); }
     });
   }
   function toggleSet(def: ItemDef, i: number) {
     let after: Session | null = null;
-    mutate((t) => { const s = t.items[def.m].sets![i]; s.done = !s.done; after = t; });
+    mutate((t) => { const s = t.items[def.m].sets![i]; if (s.done) track(t, "deshacer_serie"); s.done = !s.done; after = t; });
     const t = todayRef.current!; const it = t.items[def.m];
     if (!it.sets![i].done) return;
     if (it.sets!.every((x) => x.done)) {
@@ -328,13 +357,48 @@ function Logbook({ uid }: { uid: string }) {
     void after;
   }
   function toggleCardio(def: ItemDef) {
-    mutate((t) => { const it = t.items[def.m]; it.done = !it.done; });
+    mutate((t) => { const it = t.items[def.m]; if (it.done) track(t, "deshacer_cardio"); it.done = !it.done; });
     const t = todayRef.current!;
     if (t.items[def.m].done) { const nx = nextUndone(t); setOpen(nx ? nx.m : ""); }
   }
   function setUnit(def: ItemDef, u: Unit) {
-    mutate((t) => { t.items[def.m].unit = u; });
+    mutate((t) => { t.items[def.m].unit = u; track(t, "cambio_unidad"); });
     setMachineUnit(def.m, u);
+  }
+
+  function applyWeight(m: string, u: Unit, v: number) {
+    mutate((t) => { const it = t.items[m]; it.sets?.forEach((x) => { if (!x.done) setW(x, u, v); }); track(t, "uso_sugerencia"); });
+  }
+
+  /* ---- cierre de sesión: comentario del entrenador ---- */
+  const todayComplete = !!(curRoutine && today && curRoutine.items.length && curRoutine.items.every((d) => itemDone(d, today.items[d.m])));
+  const coachAsked = useRef<string | null>(null);
+  async function askCoach() {
+    setCoach({ busy: true, err: null });
+    try {
+      if (todayRef.current) { markPending(todayRef.current); await flushPending(); }
+      const j = await callCoach<{ text: string }>("/api/resumen", { date: todayKey });
+      mutate((t) => { (t.items as any).__resumen = { text: j.text, at: Date.now() }; });
+      setCoach({ busy: false, err: null });
+    } catch (e: any) { setCoach({ busy: false, err: e.message }); }
+  }
+  useEffect(() => {
+    if (!todayComplete || !today || (today.items as any).__resumen || coachAsked.current === todayKey || !navigator.onLine) return;
+    coachAsked.current = todayKey;
+    const id = setTimeout(() => { askCoach(); }, 1200);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayComplete, todayKey]);
+  function setCost(k: string) { mutate((t) => { const c = ((t.items as any).__cierre ||= {}); c.costo = c.costo === k ? null : k; c.at = Date.now(); }); }
+
+  /* ---- balance del bloque ---- */
+  async function askBalance(blockId: string) {
+    setBusyBalance(true); setBalanceErr(null);
+    try {
+      const j = await callCoach<Balance>("/api/balance", { block_id: blockId });
+      setBalances((b) => { const n = { ...b, [blockId]: j }; lsSet(`lf.${uid}.balance`, n); return n; });
+    } catch (e: any) { setBalanceErr(e.message); }
+    setBusyBalance(false);
   }
 
   const effectiveOpen = open ?? (today && curRoutine ? nextUndone(today)?.m ?? "" : "");
@@ -371,7 +435,7 @@ function Logbook({ uid }: { uid: string }) {
     const last = lastFor(sessions, def.m, todayKey, (k) => isDeload(blocks, k));
     if (!last) return <div className="prev"><span><b>Primera vez:</b> {def.k === "hold" ? "anota cuántos segundos aguantas con buena técnica." : `elige un peso con el que puedas hacer ${def.reps?.[1] ?? 12} repeticiones con buena técnica. Lo usaremos como punto de partida.`}</span></div>;
     const it = last.it;
-    let line = "", hint: string | null = null;
+    let line = "", hint: string | null = null, sugg: { u: Unit; v: number; t: string } | null = null;
     if (def.k === "hold") line = (it.sets || []).filter((x) => x.done).map((x) => x.secs + " s").join(" · ");
     else {
       const ds = (it.sets || []).filter((x) => x.done);
@@ -381,12 +445,23 @@ function Logbook({ uid }: { uid: string }) {
       line = `${kg ? fmtW(best.kg, best.lb, u) + " × " : ""}${ds.map((x) => x.reps).join(", ")} reps`;
       const top = def.reps![1];
       if (kg && !deloadNow && (it.feel === "facil" || (ds.length >= (def.sets || 3) && ds.every((x) => (x.reps || 0) >= top))))
-        hint = `Te costó poco: prueba ${u === "lb" ? fmtW(null, (best.lb ?? toLb(kg)) + 5, "lb") : fmtW(kg + 2.5, null, "kg")} hoy.`;
+      {
+        const v = u === "lb" ? (best.lb ?? toLb(kg)!) + 5 : kg + 2.5;
+        const t = u === "lb" ? fmtW(null, v, "lb") : fmtW(v, null, "kg");
+        hint = `La vez anterior te costó poco: hoy puedes subir a ${t}.`;
+        sugg = { u, v, t: `${fmtNum(v)} ${u}` };
+      }
     }
     return (
       <div className="prev">
         <span>Anterior · {shortDate(last.date)}: <b className="num">{line}</b>{it.feel ? ` · ${feelName(it.feel)}` : ""}</span>
         {hint && <span className="hint">{hint}</span>}
+        {sugg && (() => {
+          const cur = today?.items[def.m];
+          const pending = cur?.sets?.filter((x) => !x.done) || [];
+          const already = !pending.length || pending.every((x) => (wIn(x, sugg!.u) ?? 0) >= sugg!.v - 0.01);
+          return already ? null : <button type="button" className="suggest" onClick={() => applyWeight(def.m, sugg!.u, sugg!.v)}>Usar {sugg!.t} en las series</button>;
+        })()}
       </div>
     );
   }
@@ -492,6 +567,11 @@ function Logbook({ uid }: { uid: string }) {
       <>
         <div className="blk num">{curBlock.name} · {past ? `terminó (semana ${w})` : `semana ${w} de ${curBlock.weeks}`}</div>
         {soon && next && <div className="blk-next">{next.name} empieza el {shortDate(next.start_date)}</div>}
+        {(w >= curBlock.weeks) && !balances[curBlock.id] && (
+          <button type="button" className="propose" onClick={() => { setPlanBlock(curBlock.id); setTab("plan"); window.scrollTo(0, 0); }}>
+            <b>{curBlock.name} {past ? "terminó" : "termina esta semana"}</b><span>Mira tu balance antes de empezar el siguiente: qué avanzó y qué conviene cuidar.</span>
+          </button>
+        )}
         {deloadNow && <div className="alert warn" style={{ marginTop: 8 }}><b>Semana de descarga</b><span>Una serie menos y cerca del 60 % del peso. La idea es recuperarse, no exigirse: termina cada serie con varias repeticiones de sobra.</span></div>}
         {past && !next && <div className="alert warn" style={{ marginTop: 8 }}><b>Bloque cumplido</b><span>Es buen momento para planificar el siguiente bloque.</span></div>}
       </>
@@ -520,9 +600,40 @@ function Logbook({ uid }: { uid: string }) {
     const isWarm = (x: ItemDef) => x.label === "Calentamiento";
     const isFin = (x: ItemDef) => r.type !== "cardio" && x.k === "cardio" && !isWarm(x);
     const warm = r.items.filter(isWarm), fin = r.items.filter(isFin), main = r.items.filter((x) => !isWarm(x) && !isFin(x));
+    const meta = today.items as any;
+    const started = r.items.some((d) => { const it = today.items[d.m]; return it?.done || it?.sets?.some((x) => x.done); });
+    const mins = meta.__t0 && meta.__t1 ? Math.round((meta.__t1 - meta.__t0) / 60000) : null;
+    const di = FOOD[r.type].findIndex(([t]) => t === "Durante");
+    const post = di >= 0 ? FOOD[r.type][di + 1] : null; // lo que va justo después de entrenar
+    const close = done === total && total > 0 && (
+      <section className="card closecard" aria-live="polite">
+        <div className="eyebrow">Sesión completa{mins && mins < 300 ? ` · ${mins} min` : ""}</div>
+        <div className="coach">
+          <span className="who">Tu entrenador</span>
+          {meta.__resumen?.text ? <p>{meta.__resumen.text}</p>
+            : coach.busy ? <p className="meta">Preparando un comentario sobre tu sesión…</p>
+            : <>
+                {coach.err && <p className="msg">{coach.err}</p>}
+                <button type="button" className="big ghost" onClick={askCoach}>Pedir comentario de la sesión</button>
+              </>}
+        </div>
+        {post && <div className="nudge"><b>En la próxima hora</b><span>{post[1]}</span></div>}
+        <div className="fld"><span>¿Algo te costó hoy?</span>
+          <div className="chips" role="group" aria-label="¿Algo te costó hoy?">
+            {COSTS.map(([k, l]) => <button key={k} type="button" className={meta.__cierre?.costo === k ? "on" : ""} aria-pressed={meta.__cierre?.costo === k} onClick={() => setCost(k)}>{l}</button>)}
+          </div>
+          {meta.__cierre?.costo && meta.__cierre.costo !== "nada" && (
+            <NoteInput id="cierre-nota" placeholder="¿Qué pasó? (opcional)" value={meta.__cierre?.nota || ""} onSave={(v) => mutate((t) => { ((t.items as any).__cierre ||= {}).nota = v; })} />
+          )}
+          {meta.__cierre?.costo && <span className="meta">Anotado. Con esto vamos mejorando la app.</span>}
+        </div>
+      </section>
+    );
     return (
       <>
         {head}
+        {close}
+        {!started && <div className="nudge" style={{ marginTop: 14 }}><b>Antes de empezar</b><span>Unos 250 ml de agua, y ten la botella a mano.</span></div>}
         {picking && Picker({ current: r.slug })}
         <div className="list">{warm.map((x) => <Fragment key={x.m}>{Card({ def: x })}</Fragment>)}</div>
         <h2 className="sect">{r.type === "cardio" ? "Cardio y core · 3 vueltas" : "Ejercicios"}</h2>
@@ -704,6 +815,20 @@ function Logbook({ uid }: { uid: string }) {
             <div className="meta num">{shortDate(sel.start_date)} → {shortDate(blockEnd(sel))} · {sel.weeks} semanas{sel.deload_week ? ` · descarga en semana ${sel.deload_week}` : ""}</div>
             {sel.focus && <p>{sel.focus}</p>}
           </div>
+        )}
+        {sel && sel.start_date <= todayKey && (weekOf(sel, todayKey) >= sel.weeks || blockEnd(sel) < todayKey || balances[sel.id]) && (
+          <section className="card closecard" style={{ marginTop: 14 }}>
+            <div className="eyebrow">Balance de {sel.name}</div>
+            {balances[sel.id] ? <>
+              <p className="meta num" style={{ margin: 0 }}>{balances[sel.id].done} de {balances[sel.id].planned} sesiones hechas · preparado el {shortDate(balances[sel.id].at.slice(0, 10))}</p>
+              <div className="balance">{balances[sel.id].text}</div>
+              <button type="button" className="linkbtn" disabled={busyBalance} onClick={() => askBalance(sel.id)}>{busyBalance ? "Actualizando…" : "Actualizar balance"}</button>
+            </> : <>
+              <p style={{ margin: 0 }}>Revisa qué avanzó en estas {sel.weeks} semanas, qué conviene cuidar y qué proponer para el siguiente bloque.</p>
+              <button type="button" className="big" disabled={busyBalance} onClick={() => askBalance(sel.id)}>{busyBalance ? "Preparando el balance…" : "Preparar balance"}</button>
+            </>}
+            {balanceErr && <p className="msg">{balanceErr}</p>}
+          </section>
         )}
         {canDo && <h2 className="sect">Esta semana</h2>}
         <div className="list">{(canDo ? thisWeek() : [1, 2, 3, 4, 5, 6, 0].map((di) => ({ k: "", di }))).map(({ k, di }) => {

@@ -262,3 +262,17 @@ img{max-width:100%}
 .blockinfo{margin-top:12px;padding:0 2px}
 .blockinfo p{margin:6px 0 0;font-size:1rem;line-height:1.5}
 .delta{font-weight:600}
+
+/* propuestas del entrenador: aparecen solo cuando sirven */
+.suggest{align-self:flex-start;margin-top:6px;min-height:46px;padding:0 16px;border-radius:23px;background:var(--ink);color:var(--surface);font-weight:700;font-size:.95rem}
+.nudge{display:flex;flex-direction:column;gap:2px;background:#CCE2ED;color:#281F18;border-radius:12px;padding:12px 14px;font-size:1rem;line-height:1.45}
+.nudge b{font-size:.9rem}
+.water{display:block;margin-top:4px;font-weight:700;color:var(--plate-num)}
+.timer.end .water{color:inherit}
+.closecard{padding:16px 14px;display:flex;flex-direction:column;gap:14px;margin-top:14px;border:2px solid var(--good)}
+.coach{display:flex;flex-direction:column;gap:6px;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.coach .who{font-size:.82rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text)}
+.coach p{margin:0;font-size:1.02rem;line-height:1.5}
+.balance{white-space:pre-wrap;font-size:1rem;line-height:1.55;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.propose{display:flex;flex-direction:column;gap:2px;text-align:left;width:100%;margin-top:10px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);border:1.5px solid var(--accent);font-size:.95rem;line-height:1.4;color:var(--ink)}
+.propose b{font-size:1rem}

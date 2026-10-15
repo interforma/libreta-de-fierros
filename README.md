@@ -28,3 +28,21 @@ npm run dev
 ## Uso sin señal
 
 La app guarda cada cambio primero en el teléfono y luego lo sube a Supabase. Si no hay conexión, queda en cola (`localStorage`) y se envía al volver la señal. El service worker (`public/sw.js`) permite abrir la app sin conexión.
+
+## Entrenador con Claude
+
+- **Comentario de la sesión** (`/api/resumen`, modelo rápido): al completar la rutina, un logro concreto y una propuesta para la próxima vez.
+- **Balance del bloque** (`/api/balance`): en la última semana de un bloque, qué avanzó, qué cuidar y qué proponer para el siguiente.
+- **Orientación por molestias** (`/api/orientacion`).
+
+Variables en Vercel: `ANTHROPIC_API_KEY` (obligatoria), `ANTHROPIC_MODEL` y `ANTHROPIC_MODEL_FAST` (opcionales).
+
+## Estudiar el uso
+
+Cada sesión guarda en silencio cuántas veces se deshizo una serie, se cambió la unidad o se escribió un valor a mano (`items.__uso`), y la respuesta a "¿Algo te costó hoy?" (`items.__cierre`). En el editor SQL de Supabase:
+
+```sql
+select date, items->'__uso' as uso, items->'__cierre' as cierre,
+       round(((items->>'__t1')::numeric - (items->>'__t0')::numeric) / 60000) as minutos
+from sessions order by date desc;
+```
