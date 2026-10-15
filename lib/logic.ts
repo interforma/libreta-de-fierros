@@ -140,9 +140,9 @@ export function itemDone(def: ItemDef, it?: ItemLog) {
 }
 export function targetText(def: ItemDef) {
   if (def.k === "cardio") return `${def.min} min · ${def.alt || ""}`;
-  if (def.k === "hold") return `${def.sets} × ${def.secs} s${def.per ? " " + def.per : ""} · desc. ${mmss(def.rest || 60)}`;
-  const r = def.reps![0] === def.reps![1] ? `${def.reps![0]}` : `${def.reps![0]}–${def.reps![1]}`;
-  return `${def.sets} × ${r}${def.per ? " " + def.per : ""} · desc. ${mmss(def.rest || 90)}`;
+  if (def.k === "hold") return `${def.sets} series de ${def.secs} s${def.per ? " " + def.per : ""} · descanso ${mmss(def.rest || 60)}`;
+  const r = def.reps![0] === def.reps![1] ? `${def.reps![0]}` : `${def.reps![0]} a ${def.reps![1]}`;
+  return `${def.sets} series de ${r} reps${def.per ? " " + def.per : ""} · descanso ${mmss(def.rest || 90)}`;
 }
 export const FEELS: [string, string][] = [["facil", "Fácil"], ["justo", "Justo"], ["dificil", "Difícil"]];
 export const feelName = (f?: string | null) => (FEELS.find((x) => x[0] === f) || [, ""])[1];
