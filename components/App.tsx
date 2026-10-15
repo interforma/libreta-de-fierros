@@ -11,6 +11,7 @@ import {
   activeBlock, weekOf, blockEnd, isDeload, routinesOf,
   type Block, type ItemDef, type ItemLog, type Machine, type Routine, type Session, type Unit,
 } from "@/lib/logic";
+import { getPrefs, savePrefs, SIZES, THEMES, type Prefs } from "@/lib/prefs";
 
 /* ---------- almacenamiento local (caché y cola sin conexión) ---------- */
 const lsGet = (k: string) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
@@ -73,11 +74,11 @@ function Login() {
 
 /* ---------- controles (a nivel de módulo para que no se remonten) ---------- */
 type F = "w" | "reps" | "secs" | "min";
-function Stepper({ id, value, label, sub, onStep, onTyped }: { id: string; value: number | null | undefined; label: string; sub?: string; onStep: (dir: 1 | -1) => void; onTyped: (raw: string) => void }) {
+function Stepper({ id, value, label, sub, stepLabel, onStep, onTyped }: { id: string; value: number | null | undefined; label: string; sub?: string; stepLabel?: string; onStep: (dir: 1 | -1) => void; onTyped: (raw: string) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <div className="step">
-      <button type="button" aria-label="Menos" onClick={() => onStep(-1)}>−</button>
+      <button type="button" className={stepLabel ? "lbl" : ""} aria-label={`Bajar ${label}${stepLabel ? ` ${stepLabel}` : ""}`} onClick={() => onStep(-1)}>−{stepLabel ?? ""}</button>
       <div className="unit">
         <input className="num" id={id} inputMode="decimal" placeholder="—" aria-label={label}
           value={draft ?? fmtNum(value)}
@@ -86,7 +87,7 @@ function Stepper({ id, value, label, sub, onStep, onTyped }: { id: string; value
           onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
         <small>{sub ?? label}</small>
       </div>
-      <button type="button" aria-label="Más" onClick={() => onStep(1)}>+</button>
+      <button type="button" className={stepLabel ? "lbl" : ""} aria-label={`Subir ${label}${stepLabel ? ` ${stepLabel}` : ""}`} onClick={() => onStep(1)}>+{stepLabel ?? ""}</button>
     </div>
   );
 }
@@ -106,26 +107,29 @@ function RestBar({ rest, onPlus, onClose }: { rest: { end: number; total: number
     if (left < -20) onClose();
   }, [left, onClose]);
   return (
-    <div className={`timer ${left <= 0 ? "end" : ""}`}>
+    <div className={`timer ${left <= 0 ? "end" : ""}`} role="timer" aria-live="off">
       <div className="fill" style={{ width: `${left <= 0 ? 100 : 100 * (1 - left / rest.total)}%` }} />
       <div className="t">{left <= 0 ? "0:00" : mmss(left)}</div>
-      <div className="l">{left <= 0 ? "A la siguiente serie" : rest.label}</div>
-      <button type="button" onClick={onPlus}>+30 s</button>
-      <button type="button" onClick={onClose}>Listo</button>
+      <div className="l">{left <= 0 ? "Listo: a la siguiente serie" : rest.label}</div>
+      <div className="btns">
+        <button type="button" onClick={onPlus}>+30 segundos</button>
+        <button type="button" className="go" onClick={onClose}>{left <= 0 ? "Cerrar" : "Saltar descanso"}</button>
+      </div>
     </div>
   );
 }
 let actx: AudioContext | null = null;
 function unlockAudio() { try { actx = actx || new (window.AudioContext || (window as any).webkitAudioContext)(); actx.resume?.(); } catch {} }
 function beep() {
+  const pr = getPrefs();
   try {
-    const a = actx; if (a) [0, 0.22, 0.44].forEach((t) => {
+    const a = pr.sound ? actx : null; if (a) [0, 0.22, 0.44].forEach((t) => {
       const o = a.createOscillator(), g = a.createGain(); o.frequency.value = 880; o.connect(g); g.connect(a.destination);
       g.gain.setValueAtTime(0.0001, a.currentTime + t); g.gain.exponentialRampToValueAtTime(0.3, a.currentTime + t + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + t + 0.18); o.start(a.currentTime + t); o.stop(a.currentTime + t + 0.2);
     });
   } catch {}
-  try { navigator.vibrate?.([200, 100, 200]); } catch {}
+  try { if (pr.vibrate) navigator.vibrate?.([300, 120, 300]); } catch {}
 }
 
 /* ===================================================================== */
@@ -152,6 +156,8 @@ function Logbook({ uid }: { uid: string }) {
   const [planOpen, setPlanOpen] = useState<number | null>(null);
   const [sync, setSync] = useState<Sync>("busy");
   const [loaded, setLoaded] = useState(false);
+  const [prefs, setPrefsState] = useState<Prefs>(() => getPrefs());
+  const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => { const n = { ...prefs, [k]: v }; setPrefsState(n); savePrefs(n); };
 
   /* ---- carga inicial ---- */
   useEffect(() => {
@@ -363,7 +369,7 @@ function Logbook({ uid }: { uid: string }) {
 
   function Prev({ def }: { def: ItemDef }) {
     const last = lastFor(sessions, def.m, todayKey, (k) => isDeload(blocks, k));
-    if (!last) return <div className="prev">Primera vez que registras este ejercicio. Anota el peso con el que partes.</div>;
+    if (!last) return <div className="prev"><span><b>Primera vez:</b> {def.k === "hold" ? "anota cuántos segundos aguantas con buena técnica." : `elige un peso con el que puedas hacer ${def.reps?.[1] ?? 12} repeticiones con buena técnica. Lo usaremos como punto de partida.`}</span></div>;
     const it = last.it;
     let line = "", hint: string | null = null;
     if (def.k === "hold") line = (it.sets || []).filter((x) => x.done).map((x) => x.secs + " s").join(" · ");
@@ -392,22 +398,26 @@ function Logbook({ uid }: { uid: string }) {
     const img = `/machines/${def.m}.jpg`;
     const isHold = def.k === "hold";
     const u = unitOf(it), o: Unit = u === "lb" ? "kg" : "lb";
-    const wsub = (st: any) => { const v = wIn(st, u); return v == null ? u : `${u} · ${fmtNum(u === "lb" ? toKg(v) : toLb(v))} ${o}`; };
-    const holdCols = { gridTemplateColumns: "26px 1fr 48px" };
+    const conv = (st: any) => { const v = wIn(st, u); return v == null || v === 0 ? "\u00a0" : `equivale a ${fmtNum(u === "lb" ? toKg(v) : toLb(v))} ${o}`; };
+    const nDone = it.sets ? it.sets.filter((x) => x.done).length : 0;
+    const okIcon = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>;
     return (
       <section className={`card ${done ? "done" : ""}`} id={`card-${def.m}`}>
         <button type="button" className="head" aria-expanded={isOpen}
           onClick={() => { setOpen(isOpen ? "" : def.m); setTimeout(() => document.getElementById("card-" + def.m)?.scrollIntoView({ block: "start", behavior: "smooth" }), 30); }}>
           <img className="thumb" src={img} alt="" />
           <div><div className="name">{def.label || m.name}</div><div className="meta">{targetText(it.sets ? { ...def, sets: it.sets.length } : def)}</div></div>
-          {done ? <span className="tick" aria-label="Hecho">✓</span> : def.k === "cardio" ? <span /> :
-            <span className="dots">{it.sets!.map((s, i) => <i key={i} className={s.done ? "on" : ""} />)}</span>}
+          {done ? <span className="tick">{okIcon}Hecho</span> : def.k === "cardio" ? <span /> :
+            <span className="count">{nDone} de {it.sets!.length}</span>}
         </button>
         {isOpen && (
           <div className="body">
-            <img className="photo" src={img} alt={m.name} />
             {def.note && <p className="tip">{def.note}</p>}
             <p className="how">{m.how_to}</p>
+            <details className="photo-toggle">
+              <summary>Ver foto de la máquina</summary>
+              <img className="photo" src={img} alt={m.name} />
+            </details>
             {activeFor(def.m) && (() => { const a = activeFor(def.m)!; return (
               <button type="button" className="alert warn" onClick={() => setTab("perfil")}>
                 <b>Molestia activa: {a.area.toLowerCase()}{a.side ? ` ${a.side}` : ""} · {a.intensity}/10</b>
@@ -415,42 +425,53 @@ function Logbook({ uid }: { uid: string }) {
               </button>); })()}
             {def.k === "cardio" ? (
               <>
-                <div className="setrow" style={{ gridTemplateColumns: "1fr" }}><Stepper id={`in-${def.m}-min`} value={it.min} label="minutos" onStep={(d) => step(def.m, "min", 0, d)} onTyped={(r) => typed(def.m, "min", 0, r)} /></div>
-                <button type="button" className={`big ${it.done ? "okk" : ""}`} onClick={() => toggleCardio(def)}>{it.done ? "Hecho ✓" : "Marcar como hecho"}</button>
+                <div className="fld"><span>Minutos</span><Stepper id={`in-${def.m}-min`} value={it.min} label="minutos" onStep={(d) => step(def.m, "min", 0, d)} onTyped={(r) => typed(def.m, "min", 0, r)} /></div>
+                <button type="button" className={`big ${it.done ? "okk" : ""}`} onClick={() => toggleCardio(def)}>{it.done ? "Hecho · tocar para deshacer" : "Marcar como hecho"}</button>
               </>
             ) : (
               <>
                 {Prev({ def })}
-                <div className="colhead" style={isHold ? holdCols : undefined}>
-                  <span>Serie</span>
-                  {isHold ? <span>segundos</span> : (
-                    <span className="utog" role="group" aria-label="Unidad de peso">
-                      {(["lb", "kg"] as Unit[]).map((x) => (
-                        <button key={x} type="button" className={u === x ? "on" : ""} aria-pressed={u === x} onClick={() => setUnit(def, x)}>{x}</button>
+                {!isHold && (
+                  <div className="ublock">
+                    <span className="lab">Esta máquina marca el peso en</span>
+                    <div className="seg" role="group" aria-label="Unidad de esta máquina">
+                      {([["lb", "Libras (lb)"], ["kg", "Kilos (kg)"]] as [Unit, string][]).map(([x, l]) => (
+                        <button key={x} type="button" className={u === x ? "on" : ""} aria-pressed={u === x} onClick={() => setUnit(def, x)}>{l}</button>
                       ))}
-                    </span>
-                  )}
-                  {!isHold && <span>reps</span>}
-                  <span>Hecha</span>
-                </div>
+                    </div>
+                  </div>
+                )}
                 <div className="sets">
                   {it.sets!.map((s, i) => (
-                    <div className="setrow" key={i} style={isHold ? holdCols : undefined}>
-                      <span className="lbl">{i + 1}</span>
-                      {isHold ? <Stepper id={`in-${def.m}-secs-${i}`} value={s.secs} label="seg" onStep={(d) => step(def.m, "secs", i, d)} onTyped={(r) => typed(def.m, "secs", i, r)} /> : (
-                        <>
-                          <Stepper id={`in-${def.m}-w-${i}`} value={wIn(s, u)} label={u} sub={wsub(s)} onStep={(d) => step(def.m, "w", i, d)} onTyped={(r) => typed(def.m, "w", i, r)} />
-                          <Stepper id={`in-${def.m}-reps-${i}`} value={s.reps} label="reps" onStep={(d) => step(def.m, "reps", i, d)} onTyped={(r) => typed(def.m, "reps", i, r)} />
-                        </>
+                    <div className={`setcard ${s.done ? "on" : ""}`} key={i}>
+                      <div className="set-top">
+                        <h3>Serie {i + 1} de {it.sets!.length}</h3>
+                        {s.done && <span className="tick">{okIcon}Hecha</span>}
+                      </div>
+                      {isHold ? (
+                        <div className="fields one"><div className="fld"><span>Segundos</span>
+                          <Stepper id={`in-${def.m}-secs-${i}`} value={s.secs} label="segundos" stepLabel="5" onStep={(d) => step(def.m, "secs", i, d)} onTyped={(r) => typed(def.m, "secs", i, r)} /></div></div>
+                      ) : (
+                        <div className="fields">
+                          <div className="fld"><span>Peso</span>
+                            <Stepper id={`in-${def.m}-w-${i}`} value={wIn(s, u)} label={`peso en ${u}`} sub={u} stepLabel={u === "lb" ? "5" : "2,5"} onStep={(d) => step(def.m, "w", i, d)} onTyped={(r) => typed(def.m, "w", i, r)} />
+                            <span className="conv num">{conv(s)}</span></div>
+                          <div className="fld"><span>Repeticiones</span>
+                            <Stepper id={`in-${def.m}-reps-${i}`} value={s.reps} label="repeticiones" sub="reps" onStep={(d) => step(def.m, "reps", i, d)} onTyped={(r) => typed(def.m, "reps", i, r)} /></div>
+                        </div>
                       )}
-                      <button type="button" className={`check ${s.done ? "on" : ""}`} aria-label={`Serie ${i + 1} hecha`} aria-pressed={s.done} onClick={() => toggleSet(def, i)}>✓</button>
+                      <button type="button" className={`check ${s.done ? "on" : ""}`} aria-pressed={s.done} onClick={() => toggleSet(def, i)}>
+                        {s.done ? "Deshacer" : <>{okIcon}Marcar serie {i + 1} como hecha</>}
+                      </button>
                     </div>
                   ))}
                 </div>
-                <div className="feel" role="group" aria-label="Sensación">
-                  {FEELS.map(([k, l]) => (
-                    <button key={k} type="button" className={it.feel === k ? "on" : ""} onClick={() => mutate((t) => { const x = t.items[def.m]; x.feel = x.feel === k ? null : k; })}>{l}</button>
-                  ))}
+                <div className="fld"><span>¿Cómo te sentiste?</span>
+                  <div className="feel" role="group" aria-label="Sensación">
+                    {FEELS.map(([k, l]) => (
+                      <button key={k} type="button" className={it.feel === k ? "on" : ""} aria-pressed={it.feel === k} onClick={() => mutate((t) => { const x = t.items[def.m]; x.feel = x.feel === k ? null : k; })}>{l}</button>
+                    ))}
+                  </div>
                 </div>
                 <NoteInput id={`note-${def.m}`} value={it.note || ""} onSave={(v) => mutate((t) => { t.items[def.m].note = v; })} />
                 <button type="button" className="linkbtn" onClick={() => setSheet(def.m)}>¿Te molestó algo? Registrar molestia</button>
@@ -469,8 +490,8 @@ function Logbook({ uid }: { uid: string }) {
     const soon = next && (parseKey(next.start_date).getTime() - parseKey(todayKey).getTime()) / 864e5 <= 7;
     return (
       <>
-        <div className="blk num">{curBlock.name} · {past ? `terminó (semana ${w})` : `semana ${w} de ${curBlock.weeks}`}
-          {soon && next ? ` · ${next.name} parte el ${shortDate(next.start_date)}` : ""}</div>
+        <div className="blk num">{curBlock.name} · {past ? `terminó (semana ${w})` : `semana ${w} de ${curBlock.weeks}`}</div>
+        {soon && next && <div className="blk-next">{next.name} empieza el {shortDate(next.start_date)}</div>}
         {deloadNow && <div className="alert warn" style={{ marginTop: 8 }}><b>Semana de descarga</b><span>Una serie menos y cerca del 60 % del peso. La idea es recuperarse, no exigirse: termina cada serie con varias repeticiones de sobra.</span></div>}
         {past && !next && <div className="alert warn" style={{ marginTop: 8 }}><b>Bloque cumplido</b><span>Es buen momento para planificar el siguiente bloque.</span></div>}
       </>
@@ -487,9 +508,12 @@ function Logbook({ uid }: { uid: string }) {
     const head = (
       Header({ title: "", eyebrow, children: <>
         <div className="top-row"><h1>{r ? r.name : "Día de descanso"}</h1>
-          <button className="chip-btn" type="button" onClick={() => setPicking(!picking)}>{picking ? "Cerrar" : "Cambiar"}</button></div>
+          <button className="chip-btn" type="button" aria-expanded={picking} onClick={() => setPicking(!picking)}>{picking ? "Cerrar" : "Cambiar rutina"}</button></div>
         {BlockLine()}
-        {r && <div className="prog"><div className="bar"><b style={{ width: `${total ? (100 * done) / total : 0}%` }} /></div><span className="num">{done} de {total}</span></div>}
+        {r && <div className="prog">
+          <div className="prog-row"><b>{done} de {total} hechos</b>{r.duration_min ? <span className="meta" style={{ margin: 0 }}>unos {r.duration_min} min</span> : null}</div>
+          <div className="bar" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Avance de la rutina"><b style={{ width: `${total ? (100 * done) / total : 0}%` }} /></div>
+        </div>}
       </> })
     );
     if (!r || !today) return <>{head}<div className="empty">Hoy toca descansar. Si igual vas al gimnasio, elige qué rutina harás.</div>{Picker({ current: null })}</>;
@@ -522,7 +546,7 @@ function Logbook({ uid }: { uid: string }) {
   }
 
   function Spark({ pts }: { pts: { v: number }[] }) {
-    if (pts.length < 2) return <svg className="spark" viewBox="0 0 110 36"><circle cx="100" cy="18" r="3.5" fill="var(--accent)" /></svg>;
+    if (pts.length < 2) return <svg className="spark" viewBox="0 0 110 36"><circle cx="100" cy="18" r="4" fill="var(--accent-text)" /></svg>;
     const vs = pts.map((p) => p.v), lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1;
     const xy = pts.map((p, i) => [6 + i * (98 / (pts.length - 1)), 30 - ((p.v - lo) / span) * 24]);
     const d = xy.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
@@ -530,47 +554,73 @@ function Logbook({ uid }: { uid: string }) {
     return (
       <svg className="spark" viewBox="0 0 110 36" aria-hidden="true">
         <path d={`${d} L${l[0].toFixed(1)} 34 L6 34 Z`} fill="var(--accent-soft)" />
-        <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinejoin="round" />
-        <circle cx={l[0].toFixed(1)} cy={l[1].toFixed(1)} r="3.5" fill="var(--accent)" />
+        <path d={d} fill="none" stroke="var(--accent-text)" strokeWidth="2.5" strokeLinejoin="round" />
+        <circle cx={l[0].toFixed(1)} cy={l[1].toFixed(1)} r="4" fill="var(--accent-text)" />
       </svg>
     );
   }
 
+  const sessionDone = (k: string) => { const ss = sessions[k]; return !!ss && Object.values(ss.items || {}).some((it) => it.done || it.sets?.some((x) => x.done)); };
+  const thisWeek = () => {
+    const nowD = parseKey(todayKey); const monday = new Date(nowD); monday.setDate(nowD.getDate() - ((nowD.getDay() + 6) % 7));
+    return [0, 1, 2, 3, 4, 5, 6].map((i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return { k: keyOf(d), di: d.getDay() }; });
+  };
+
   function Progreso() {
     const keys = Object.keys(sessions).sort();
-    const nowD = new Date(); const monday = new Date(nowD); monday.setDate(nowD.getDate() - ((nowD.getDay() + 6) % 7)); const mk = keyOf(monday);
-    let wk = 0, vol = 0, total = 0;
-    keys.forEach((k) => {
-      const s = sessions[k]; const any = Object.values(s.items || {}).some((it) => it.done || it.sets?.some((x) => x.done)); if (!any) return; total++;
-      if (k >= mk) { wk++; Object.values(s.items).forEach((it) => it.sets?.forEach((x) => { if (x.done && x.kg && x.reps) vol += x.kg * x.reps; })); }
-    });
+    const week = thisWeek(), mk = week[0].k;
+    const plan = routinesOf(routines, curBlock?.id);
+    const hasRoutine = (di: number) => plan.some((r) => r.weekdays.includes(di));
+    const planned = week.filter((w) => hasRoutine(w.di)).length;
+    let wk = 0, total = 0;
+    keys.forEach((k) => { if (!sessionDone(k)) return; total++; if (k >= mk) wk++; });
     const rows = Object.keys(machines).map((m) => ({
       m, pts: keys.map((k) => { const mt = metricOf(sessions[k].items?.[m]); return mt ? { k, ...mt, it: sessions[k].items[m] } : null; }).filter(Boolean) as any[],
     })).filter((r) => r.pts.length).sort((a, b) => (a.pts[a.pts.length - 1].k < b.pts[b.pts.length - 1].k ? 1 : -1));
     return (
       <>
         {Header({ title: "Progreso", eyebrow: "Tu progreso" })}
-        <div className="stats">
-          <div className="stat"><div className="v">{wk}</div><div className="k">sesiones esta semana</div></div>
-          <div className="stat"><div className="v">{vol ? Math.round(vol).toLocaleString("es-CL") : "0"}</div><div className="k">kg movidos esta semana</div></div>
-          <div className="stat"><div className="v">{total}</div><div className="k">sesiones en total</div></div>
-        </div>
+        <section className="card" style={{ padding: 14, marginTop: 14 }}>
+          <div className="stats two" style={{ marginTop: 0 }}>
+            <div className="stat"><div className="v">{wk} <small>de {planned || "—"}</small></div><div className="k">sesiones esta semana</div></div>
+            <div className="stat"><div className="v">{total}</div><div className="k">sesiones en total</div></div>
+          </div>
+          <div className="week" role="img" aria-label={`Esta semana: ${wk} de ${planned} sesiones hechas`}>
+            {week.map((w) => <i key={w.k} className={sessionDone(w.k) ? "ok" : w.k === todayKey ? "today" : !hasRoutine(w.di) ? "rest" : ""} />)}
+          </div>
+          <div className="weekl" aria-hidden="true">{week.map((w) => <span key={w.k} className={w.k === todayKey ? "today" : ""}>{w.k === todayKey ? "Hoy" : DAYS[w.di].slice(0, 3)}</span>)}</div>
+        </section>
         {!rows.length ? <div className="empty">Aún no hay registros. Cuando marques tu primera serie en <b>Hoy</b>, aquí verás cómo sube el peso de cada máquina.</div> : (
+          <>
+          <h2 className="sect">Tus pesos</h2>
+          <p className="meta" style={{ margin: "4px 2px 0" }}>En la unidad de cada máquina, con la equivalencia entre paréntesis.</p>
           <div className="list">{rows.map(({ m, pts }) => {
             const last = pts[pts.length - 1], bp = pts.reduce((a: any, p: any) => (p.v > a.v ? p : a), pts[0]), isOpen = progOpen === m;
-            const show = (p: any) => (p.u === "kg" ? fmtW(p.v, p.lb, last.unit) : `${fmtNum(p.v)} ${p.u}`);
+            const unit: Unit = machines[m]?.unit || last.unit || "kg";
+            const show = (p: any) => (p.u === "kg" ? fmtW(p.v, p.lb, unit) : `${fmtNum(p.v)} ${p.u}`);
+            // registro raro: mucho más que lo habitual o, si es el primero, mucho más que el peso corporal
+            const prevMax = pts.slice(0, -1).filter((p: any) => p.u === "kg").reduce((a: number, p: any) => Math.max(a, p.v), 0);
+            const odd = last.u === "kg" && (prevMax ? last.v > prevMax * 1.6 : !!profile.weight_kg && last.v > Number(profile.weight_kg) * 2.5);
             return (
               <section className="card" key={m}>
                 <button type="button" className="prow" aria-expanded={isOpen} onClick={() => setProgOpen(isOpen ? null : m)}>
-                  <div><div className="name">{machines[m].name}</div><div className="meta num">Última {show(last)} · mejor {show(bp)} · {pts.length} {pts.length === 1 ? "vez" : "veces"}</div></div>
+                  <div>
+                    <div className="name">{machines[m].name}</div>
+                    <div className="pval num">{show(last)}</div>
+                    <div className="meta num">{pts.length === 1 ? "Primer registro" : `Mejor ${show(bp)} · ${pts.length} veces`}</div>
+                    {odd && <span className="flag">Revisar</span>}
+                  </div>
                   {Spark({ pts: pts.slice(-12) })}
                 </button>
-                {isOpen && <div className="hist">{pts.slice().reverse().slice(0, 15).map((p: any) => (
-                  <div key={p.k}><span>{shortDate(p.k)}</span><span className="num">{p.u === "kg" ? fmtW(p.v, p.lb, p.unit) + " × " + p.reps.join(", ") : fmtNum(p.v) + " " + p.u}{p.it.feel ? " · " + feelName(p.it.feel) : ""}{p.it.note ? " · " + p.it.note : ""}</span></div>
-                ))}</div>}
+                {isOpen && <div className="hist">
+                  {odd && <span className="warnline">Este registro es mucho mayor de lo habitual. Revisa que la unidad (lb o kg) esté bien elegida en la máquina.</span>}
+                  {pts.slice().reverse().slice(0, 15).map((p: any) => (
+                    <div key={p.k}><span>{shortDate(p.k)}</span><span className="num">{p.u === "kg" ? fmtW(p.v, p.lb, unit) + " × " + p.reps.join(", ") : fmtNum(p.v) + " " + p.u}{p.it.feel ? " · " + feelName(p.it.feel) : ""}{p.it.note ? " · " + p.it.note : ""}</span></div>
+                  ))}</div>}
               </section>
             );
           })}</div>
+          </>
         )}
       </>
     );
@@ -591,7 +641,37 @@ function Logbook({ uid }: { uid: string }) {
     return (
       <>
         {Header({ title: "Perfil", eyebrow: "Tú y tu salud" })}
-        <div className="list"><ProfileCard profile={profile} onSave={saveProfile} /></div>
+        <h2 className="sect">Para ver mejor</h2>
+        <section className="card settings" style={{ marginTop: 10 }}>
+          <div>
+            <div className="lab">Tamaño de letra</div>
+            <div className="seg three" role="group" aria-label="Tamaño de letra">
+              {SIZES.map(([k, l], i) => (
+                <button key={k} type="button" aria-pressed={prefs.size === k} onClick={() => setPref("size", k)}>
+                  <span className="num" style={{ fontSize: [16, 22, 28][i], fontWeight: 600, lineHeight: 1 }} aria-hidden="true">A</span><small>{l}</small>
+                </button>
+              ))}
+            </div>
+            <div className="preview" aria-hidden="true"><div className="name">Press inclinado máquina</div><div className="meta">3 series de 10 a 12 reps · descanso 1:30</div></div>
+          </div>
+          <div>
+            <div className="lab">Colores de la pantalla</div>
+            <div className="seg three" role="group" aria-label="Colores de la pantalla">
+              {THEMES.map(([k, l]) => <button key={k} type="button" aria-pressed={prefs.theme === k} onClick={() => setPref("theme", k)}>{l}</button>)}
+            </div>
+            <p className="meta" style={{ margin: "8px 0 0" }}>"Claro" se lee mejor con la luz del gimnasio.</p>
+          </div>
+          <div>
+            {([["vibrate", "Vibrar", "Al terminar el descanso"], ["sound", "Sonido", "Un aviso corto al terminar el descanso"]] as const).map(([k, l, h]) => (
+              <div className="toggle" key={k}>
+                <div><div className="name">{l}</div><div className="meta">{h}</div></div>
+                <button type="button" role="switch" className="switch" aria-checked={prefs[k]} aria-label={l} onClick={() => setPref(k, !prefs[k])}><i /></button>
+              </div>
+            ))}
+          </div>
+        </section>
+        <h2 className="sect">Tus datos</h2>
+        <div className="list" style={{ marginTop: 10 }}><ProfileCard profile={profile} onSave={saveProfile} /></div>
         <h2 className="sect">Controles con profesionales</h2>
         <CheckupList items={checkups} onSaved={upsertCheckup} onDeleted={removeCheckup} />
         <h2 className="sect">Molestias {active.length ? `· ${active.length} activa${active.length > 1 ? "s" : ""}` : ""}</h2>
@@ -603,7 +683,6 @@ function Logbook({ uid }: { uid: string }) {
   }
 
   function Plan() {
-    const todayIdx = new Date().getDay();
     const sel = blocks.find((b) => b.id === planBlock) || curBlock || blocks[blocks.length - 1] || null;
     const list = sel ? routinesOf(routines, sel.id) : routines;
     const status = (b: Block) => (b.start_date > todayKey ? "próximo" : b.id === curBlock?.id ? "actual" : "anterior");
@@ -626,14 +705,16 @@ function Logbook({ uid }: { uid: string }) {
             {sel.focus && <p>{sel.focus}</p>}
           </div>
         )}
-        <div className="list">{[1, 2, 3, 4, 5, 6, 0].map((di) => {
+        {canDo && <h2 className="sect">Esta semana</h2>}
+        <div className="list">{(canDo ? thisWeek() : [1, 2, 3, 4, 5, 6, 0].map((di) => ({ k: "", di }))).map(({ k, di }) => {
           const r = list.find((x) => x.weekdays.includes(di)) || null; const isOpen = planOpen === di;
+          const isToday = canDo && k === todayKey, wasDone = canDo && !!k && sessionDone(k);
           return (
-            <section className="card" key={di}>
-              <button type="button" className={`day ${di === todayIdx ? "today" : ""}`} aria-expanded={isOpen} onClick={() => setPlanOpen(isOpen ? null : di)}>
+            <section className={`card ${isToday ? "today" : wasDone ? "done" : ""}`} key={di}>
+              <button type="button" className="day" aria-expanded={r ? isOpen : undefined} onClick={() => setPlanOpen(isOpen ? null : di)}>
                 <span className="d">{DAYS[di].slice(0, 3)}</span>
-                <span><span className="name">{r ? r.name : "Descanso"}</span>{r && <div className="meta">{r.duration_min} min</div>}</span>
-                <span className="meta">{r ? (isOpen ? "▴" : "▾") : ""}</span>
+                <span><span className="name">{r ? r.name : "Descanso"}</span><div className="meta">{r ? `${r.duration_min} min` : "Recuperación"}</div></span>
+                {wasDone ? <span className="badge ok">Hecho</span> : isToday ? <span className="badge today">Hoy</span> : <span className="meta" aria-hidden="true">{r ? (isOpen ? "▴" : "▾") : ""}</span>}
               </button>
               {isOpen && r && <>
                 <ol className="plist">{r.items.map((x, i) => <li key={i}>{x.label || machines[x.m]?.name} <span>· {targetText(x)}</span>{x.note && <em>{x.note}</em>}</li>)}</ol>
