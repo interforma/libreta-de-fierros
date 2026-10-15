@@ -1,0 +1,65 @@
+// Apoyo del "entrenador" con Claude: solo en el servidor (rutas de /api).
+// Los números se calculan aquí y se le pasan a Claude ya resueltos, para que el texto se apoye en hechos y no invente cifras.
+
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { bmi, monthsSince, GOALS, type Profile } from "@/lib/health";
+import { fmtNum, toKg, toLb, type Unit } from "@/lib/logic";
+
+export const MODEL_FAST = process.env.ANTHROPIC_MODEL_FAST || "claude-haiku-5-5";
+export const MODEL_DEEP = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
+
+/** Cliente con el token del usuario: Supabase aplica RLS, así que solo ve sus propios datos. */
+export function userDb(req: Request): SupabaseClient | null {
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    global: { headers: { Authorization: auth } },
+    auth: { persistSession: false },
+  });
+}
+
+export async function askClaude(opts: { model: string; system: string; content: string; maxTokens: number }) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new CoachError("La IA aún no está activada (falta la clave de la API de Claude en Vercel).", 503);
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: opts.model, max_tokens: opts.maxTokens, system: opts.system, messages: [{ role: "user", content: opts.content }] }),
+  });
+  if (!r.ok) {
+    console.error("anthropic", r.status, (await r.text()).slice(0, 300));
+    throw new CoachError("La IA no respondió. Intenta de nuevo en un momento.", 502);
+  }
+  const j = await r.json();
+  const text = (j.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n").trim();
+  if (!text) throw new CoachError("La IA no devolvió una respuesta.", 502);
+  return text;
+}
+
+export class CoachError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+}
+
+export function profileLines(prof: Partial<Profile>) {
+  const b = prof.height_cm && prof.weight_kg ? bmi(prof as Profile) : null;
+  return [
+    `PERFIL: ${prof.sex || "sexo no indicado"}, ${prof.age ?? "?"} años, ${prof.weight_kg ?? "?"} kg${b ? ` (IMC ${b.toFixed(1)})` : ""}. ${prof.days_per_week ?? "?"} días por semana, hace ${monthsSince(prof.gym_since ?? null) ?? "?"} meses en el gimnasio.`,
+    `Trayectoria: ${prof.sport_history || "no indicada"}. Objetivo: ${GOALS.find((g) => g[0] === prof.goal)?.[1] || "no indicado"}. Condiciones: ${prof.conditions || "ninguna indicada"}.`,
+  ].join("\n");
+}
+
+/** Peso en la unidad de la máquina, con la equivalencia. */
+export function wText(kg: number | null, lb: number | null, unit: Unit) {
+  if (unit === "lb") return `${fmtNum(lb ?? toLb(kg))} lb (${fmtNum(kg ?? toKg(lb))} kg)`;
+  return `${fmtNum(kg ?? toKg(lb))} kg`;
+}
+
+export type SetRow = { date: string; machine_slug: string; unit: string; kg: number | null; lb: number | null; reps: number | null; secs: number | null; done: boolean; feel: string | null };
+
+/** Mejor serie (más kg) de un ejercicio en una fecha, con todas sus repeticiones. */
+export function bestOf(rows: SetRow[]) {
+  const done = rows.filter((r) => r.done);
+  if (!done.length) return null;
+  const top = done.reduce((a, r) => (Number(r.kg || 0) > Number(a.kg || 0) ? r : a), done[0]);
+  return { kg: top.kg != null ? Number(top.kg) : null, lb: top.lb != null ? Number(top.lb) : null, unit: (top.unit === "lb" ? "lb" : "kg") as Unit, reps: done.map((r) => r.reps ?? 0), feel: top.feel };
+}
