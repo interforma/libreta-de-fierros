@@ -22,7 +22,8 @@ export function userDb(req: Request): SupabaseClient | null {
 // razonamiento cuenta dentro de max_tokens. Con un límite chico no queda espacio para el texto,
 // así que el largo de la respuesta se controla en el prompt y max_tokens lleva holgura.
 const MIN_TOKENS = 4000;
-export async function askClaude(opts: { model: string; system: string; content: string; maxTokens: number }) {
+type Block = { type: "text"; text: string } | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+export async function askClaude(opts: { model: string; system: string; content: string | Block[]; maxTokens: number }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new CoachError("La IA aún no está activada (falta la clave de la API de Claude en Vercel).", 503);
   const r = await fetch("https://api.anthropic.com/v1/messages", {

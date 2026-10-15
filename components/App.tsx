@@ -12,6 +12,8 @@ import {
   type Block, type ItemDef, type ItemLog, type Machine, type Routine, type Session, type Unit,
 } from "@/lib/logic";
 import { getPrefs, savePrefs, SIZES, THEMES, type Prefs } from "@/lib/prefs";
+import { callCoach } from "@/lib/coachClient";
+import { GuidePanel, MachineCatalog, PhotoSheet } from "@/components/Maquinas";
 
 /* ---------- almacenamiento local (caché y cola sin conexión) ---------- */
 const lsGet = (k: string) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
@@ -135,13 +137,6 @@ function beep() {
 }
 
 /* ---------- rutas de IA (entrenador) ---------- */
-async function callCoach<T>(path: string, body: unknown): Promise<T> {
-  const { data } = await supabase.auth.getSession();
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${data.session?.access_token}` }, body: JSON.stringify(body) });
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(j.error || "No se pudo conectar con el entrenador.");
-  return j as T;
-}
 type Balance = { text: string; done: number; planned: number; at: string };
 const COSTS: [string, string][] = [["nada", "Nada"], ["registrar", "Registrar las series"], ["maquina", "Alguna máquina"], ["cansancio", "Terminar la rutina"]];
 
@@ -174,6 +169,24 @@ function Logbook({ uid }: { uid: string }) {
   const [busyBalance, setBusyBalance] = useState(false);
   const [balanceErr, setBalanceErr] = useState<string | null>(null);
   const [coach, setCoach] = useState<{ busy: boolean; err: string | null }>({ busy: false, err: null });
+  const [photoSheet, setPhotoSheet] = useState(false);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+
+  /* ---- fotos propias de las máquinas (Storage privado: URLs firmadas por una semana) ---- */
+  useEffect(() => {
+    const need = Object.values(machines).filter((m) => m.photo_path && !photoUrls[m.photo_path]).map((m) => m.photo_path!) ;
+    if (!need.length || !navigator.onLine) return;
+    supabase.storage.from("machine-photos").createSignedUrls(need, 7 * 24 * 3600).then(({ data }) => {
+      if (!data) return;
+      setPhotoUrls((u) => { const n = { ...u }; data.forEach((d) => { if (d.path && d.signedUrl) n[d.path] = d.signedUrl; }); return n; });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [machines]);
+  const photoUrl = (m: Machine) => (m.photo_path && photoUrls[m.photo_path]) || `/machines/${m.slug}.jpg`;
+  function putMachine(m: Machine) {
+    setMachines((all) => { const n = { ...all, [m.slug]: { ...all[m.slug], ...m } }; lsSet(K.m, n); return n; });
+  }
+  const setGuide = (slug: string, guide: string) => putMachine({ ...machines[slug], guide });
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => { const n = { ...prefs, [k]: v }; setPrefsState(n); savePrefs(n); };
 
   /* ---- carga inicial ---- */
@@ -183,7 +196,7 @@ function Logbook({ uid }: { uid: string }) {
       await supabase.rpc("seed_defaults");
       await supabase.rpc("seed_block_one");
       const [m, r, s, b] = await Promise.all([
-        supabase.from("machines").select("slug,name,muscle_group,how_to,unit,settings,photo_path"),
+        supabase.from("machines").select("slug,name,muscle_group,how_to,unit,settings,photo_path,guide,guide_at,source"),
         supabase.from("routines").select("slug,name,type,weekdays,duration_min,items,position,block_id").order("position"),
         supabase.from("sessions").select("date,routine_slug,items,client_updated_at").order("date", { ascending: false }).limit(400),
         supabase.from("blocks").select("id,name,start_date,weeks,deload_week,focus").order("start_date"),
@@ -470,7 +483,7 @@ function Logbook({ uid }: { uid: string }) {
     const it = today!.items[def.m] as ItemLog; const m = machines[def.m];
     if (!it || !m) return null;
     const done = itemDone(def, it), isOpen = effectiveOpen === def.m;
-    const img = `/machines/${def.m}.jpg`;
+    const img = photoUrl(m);
     const isHold = def.k === "hold";
     const u = unitOf(it), o: Unit = u === "lb" ? "kg" : "lb";
     const conv = (st: any) => { const v = wIn(st, u); return v == null || v === 0 ? "\u00a0" : `equivale a ${fmtNum(u === "lb" ? toKg(v) : toLb(v))} ${o}`; };
@@ -493,6 +506,7 @@ function Logbook({ uid }: { uid: string }) {
               <summary>Ver foto de la máquina</summary>
               <img className="photo" src={img} alt={m.name} />
             </details>
+            <GuidePanel machine={m} onGuide={setGuide} />
             {activeFor(def.m) && (() => { const a = activeFor(def.m)!; return (
               <button type="button" className="alert warn" onClick={() => setTab("perfil")}>
                 <b>Molestia activa: {a.area.toLowerCase()}{a.side ? ` ${a.side}` : ""} · {a.intensity}/10</b>
@@ -649,7 +663,8 @@ function Logbook({ uid }: { uid: string }) {
             })}</div>
           </div>
         )}
-        <button type="button" className="big ghost" style={{ marginTop: 14 }} onClick={() => setSheet(null)}>Registrar una molestia o dolor</button>
+        <button type="button" className="big ghost" style={{ marginTop: 14 }} onClick={() => setPhotoSheet(true)}>¿Una máquina que no conoces? Sácale una foto</button>
+        <button type="button" className="big ghost" style={{ marginTop: 10 }} onClick={() => setSheet(null)}>Registrar una molestia o dolor</button>
         <details className="food"><summary>Alimentación e hidratación <span className="meta">{r.type === "cardio" ? "día cardio" : "día fuerza"}</span></summary>
           <ul>{FOOD[r.type].map(([t, x]) => <li key={t}><b>{t}</b><span>{x}</span></li>)}</ul></details>
       </>
@@ -783,6 +798,8 @@ function Logbook({ uid }: { uid: string }) {
         </section>
         <h2 className="sect">Tus datos</h2>
         <div className="list" style={{ marginTop: 10 }}><ProfileCard profile={profile} onSave={saveProfile} /></div>
+        <h2 className="sect">Máquinas de tu gimnasio</h2>
+        <MachineCatalog uid={uid} machines={machines} photoUrl={photoUrl} onGuide={setGuide} onSaved={(m) => putMachine(m)} onAdd={() => setPhotoSheet(true)} />
         <h2 className="sect">Controles con profesionales</h2>
         <CheckupList items={checkups} onSaved={upsertCheckup} onDeleted={removeCheckup} />
         <h2 className="sect">Molestias {active.length ? `· ${active.length} activa${active.length > 1 ? "s" : ""}` : ""}</h2>
@@ -858,6 +875,7 @@ function Logbook({ uid }: { uid: string }) {
   return (
     <>
       <div className="wrap">{tab === "hoy" ? Hoy() : tab === "prog" ? Progreso() : tab === "plan" ? Plan() : PerfilView()}</div>
+      {photoSheet && <PhotoSheet uid={uid} machines={machines} onClose={() => setPhotoSheet(false)} onSaved={(m) => putMachine(m)} />}
       {sheet !== undefined && (
         <DiscomfortSheet machines={machines} initialMachine={sheet}
           options={(curRoutine?.items || []).filter((x) => x.k !== "cardio").map((x) => x.m)}

@@ -9,3 +9,4 @@
 - En `sessions.items`, las claves que empiezan con `__` no son ejercicios: `__t0`/`__t1` (inicio y término), `__uso` (contadores de fricción), `__cierre` (respuesta a "¿Algo te costó hoy?"), `__resumen` (comentario del entrenador), `__suplementos`.
 - IA del entrenador en `lib/coach.ts` y `app/api/{resumen,balance,orientacion}`: los números se calculan en el servidor y Claude solo redacta. Modelo rápido `ANTHROPIC_MODEL_FAST` (por defecto Haiku) para mensajes cortos.
 - Criterio de producto: la app propone o avisa en el momento justo; no agrega datos que nadie pidió.
+- Máquinas: `machines.guide` guarda la guía paso a paso (se genera una vez en `/api/maquina/guia`). Fotos propias en el bucket privado `machine-photos`, carpeta `<uid>/`, con URL firmada; `source = 'foto'` para las agregadas con `/api/maquina/foto`.

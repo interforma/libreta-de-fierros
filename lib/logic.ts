@@ -11,6 +11,9 @@ export type Machine = {
   unit: Unit;
   settings: string;
   photo_path: string | null;
+  guide?: string | null;     // guía paso a paso generada con Claude
+  guide_at?: string | null;
+  source?: "catalogo" | "foto";
 };
 
 export type ItemDef = {
