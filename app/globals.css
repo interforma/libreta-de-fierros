@@ -292,3 +292,13 @@ img{max-width:100%}
 .mcard summary{list-style:none;cursor:pointer}
 .mcard summary::-webkit-details-marker{display:none}
 .filebtn{display:flex;align-items:center;justify-content:center;cursor:pointer}
+
+/* temporizador de trabajo (cardio y aguante) */
+.timer.work{background:var(--accent);color:var(--accent-ink)}
+.timer.work .t{color:var(--accent-ink)}
+.timer.work .fill{background:var(--accent-ink)}
+.timer.work button{color:var(--accent-ink);border-color:var(--accent-ink)}
+.timer.work button.go{background:var(--accent-ink);color:var(--accent);border-color:var(--accent-ink)}
+.timer .btns.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.timer .cancel{grid-column:1 / -1;justify-self:center;border:0!important;min-height:40px;font-size:.92rem;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.running{display:flex;align-items:center;justify-content:center;min-height:56px;border-radius:12px;background:var(--accent-soft);border:1.5px solid var(--accent);font-weight:700;font-size:1rem;text-align:center;padding:0 12px}

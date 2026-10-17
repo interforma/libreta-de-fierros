@@ -99,6 +99,32 @@ function NoteInput({ id, value, onSave, placeholder = "Nota: asiento 4, agarre a
   return <input className="note" id={id} placeholder={placeholder} value={v}
     onChange={(e) => setV(e.target.value)} onBlur={() => { if (v !== value) onSave(v.slice(0, 200)); }} />;
 }
+/* Temporizador de trabajo: cardio (minutos) y ejercicios de aguante (segundos). Cuenta hacia atrás y avisa al terminar. */
+type Work = { m: string; i: number; end: number; total: number; label: string; paused?: number };
+function WorkBar({ work, onPlus, onFinish, onCancel, onPause }: { work: Work; onPlus: () => void; onFinish: (early: boolean) => void; onCancel: () => void; onPause: () => void }) {
+  const [now, setNow] = useState(Date.now());
+  const fired = useRef(false);
+  useEffect(() => { fired.current = false; setNow(Date.now()); const iv = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(iv); }, [work]);
+  const left = work.paused != null ? work.paused : Math.ceil((work.end - now) / 1000);
+  useEffect(() => {
+    if (work.paused == null && left <= 0 && !fired.current) { fired.current = true; beep(); onFinish(false); }
+  }, [left, work.paused, onFinish]);
+  const isCardio = work.i < 0;
+  return (
+    <div className="timer work" role="timer" aria-live="off">
+      <div className="fill" style={{ width: `${100 * (1 - Math.max(0, left) / work.total)}%` }} />
+      <div className="t">{mmss(Math.max(0, left))}</div>
+      <div className="l">{work.paused != null ? "En pausa · " : ""}{work.label}</div>
+      <div className="btns three">
+        <button type="button" onClick={onPause}>{work.paused != null ? "Seguir" : "Pausa"}</button>
+        <button type="button" onClick={onPlus}>{isCardio ? "+1 min" : "+10 s"}</button>
+        <button type="button" className="go" onClick={() => onFinish(true)}>Terminar</button>
+      </div>
+      <button type="button" className="cancel" onClick={onCancel}>Cancelar sin registrar</button>
+    </div>
+  );
+}
+
 type Rest = { end: number; total: number; label: string; water?: boolean };
 function RestBar({ rest, onPlus, onClose }: { rest: Rest; onPlus: () => void; onClose: () => void }) {
   const [now, setNow] = useState(Date.now());
@@ -300,9 +326,12 @@ function Logbook({ uid }: { uid: string }) {
   const lastWater = useRef(0);
   const wake = useRef<any>(null);
   const closeRest = useCallback(() => setRest(null), []);
+  async function keepAwake() {
+    try { if (!wake.current && (navigator as any).wakeLock) { wake.current = await (navigator as any).wakeLock.request("screen"); wake.current.addEventListener?.("release", () => (wake.current = null)); } } catch {}
+  }
   async function startRest(sec: number, label: string) {
     unlockAudio();
-    try { if (!wake.current && (navigator as any).wakeLock) { wake.current = await (navigator as any).wakeLock.request("screen"); wake.current.addEventListener?.("release", () => (wake.current = null)); } } catch {}
+    await keepAwake();
     const now = Date.now();
     if (!lastWater.current) lastWater.current = Number((todayRef.current?.items as any)?.__t0) || now;
     const water = now - lastWater.current > 18 * 60000;
@@ -328,6 +357,7 @@ function Logbook({ uid }: { uid: string }) {
 
   /* ---- acciones ---- */
   const curRoutine = today?.routine_slug ? routineBySlug[today.routine_slug] : null;
+  const curRoutineRef = useRef(curRoutine); curRoutineRef.current = curRoutine;
   const curBlock = activeBlock(blocks, todayKey);
   const deloadNow = isDeload(blocks, todayKey);
   const nextUndone = (t: Session) => curRoutine?.items.find((d) => !itemDone(d, t.items[d.m])) || null;
@@ -374,6 +404,49 @@ function Logbook({ uid }: { uid: string }) {
     const t = todayRef.current!;
     if (t.items[def.m].done) { const nx = nextUndone(t); setOpen(nx ? nx.m : ""); }
   }
+  /* ---- temporizador de trabajo ---- */
+  const [work, setWork] = useState<Work | null>(null);
+  const workRef = useRef<Work | null>(null);
+  useEffect(() => { workRef.current = work; }, [work]);
+  function startWork(def: ItemDef, i: number) {
+    unlockAudio(); keepAwake(); setRest(null);
+    const it = todayRef.current?.items[def.m]; const name = def.label || machines[def.m]?.name || "";
+    const sec = i < 0 ? Math.max(1, it?.min ?? def.min ?? 10) * 60 : Math.max(5, it?.sets?.[i]?.secs ?? def.secs ?? 30);
+    setWork({ m: def.m, i, end: Date.now() + sec * 1000, total: sec, label: i < 0 ? `${name} · ${Math.round(sec / 60)} min` : `${name} · serie ${i + 1}` });
+  }
+  const finishWork = useCallback((early: boolean) => {
+    const w = workRef.current; if (!w) return;
+    setWork(null); workRef.current = null;
+    const left = w.paused != null ? w.paused : Math.max(0, Math.ceil((w.end - Date.now()) / 1000));
+    const did = early ? Math.max(0, w.total - left) : w.total;
+    const def = curRoutineRef.current?.items.find((d) => d.m === w.m);
+    if (!def) return;
+    if (w.i < 0) {
+      const min = Math.max(1, Math.round(did / 60));
+      mutate((t) => { const it = t.items[w.m]; it.min = min; if (!it.done) { it.done = true; track(t, early ? "temporizador_terminado_antes" : "temporizador_completo"); } });
+      const nx = todayRef.current ? nextUndone(todayRef.current) : null; setOpen(nx ? nx.m : "");
+      if (nx) setTimeout(() => document.getElementById("card-" + nx.m)?.scrollIntoView({ block: "start", behavior: "smooth" }), 60);
+    } else {
+      mutate((t) => { const st = t.items[w.m].sets?.[w.i]; if (st) st.secs = Math.max(1, did); track(t, early ? "temporizador_terminado_antes" : "temporizador_completo"); });
+      if (!todayRef.current?.items[w.m]?.sets?.[w.i]?.done) toggleSet(def, w.i);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function pauseWork() {
+    setWork((w) => {
+      if (!w) return w;
+      if (w.paused != null) return { ...w, end: Date.now() + w.paused * 1000, paused: undefined };
+      return { ...w, paused: Math.max(0, Math.ceil((w.end - Date.now()) / 1000)) };
+    });
+  }
+  function plusWork() {
+    setWork((w) => {
+      if (!w) return w;
+      const add = w.i < 0 ? 60 : 10;
+      return w.paused != null ? { ...w, paused: w.paused + add, total: w.total + add } : { ...w, end: Math.max(w.end, Date.now()) + add * 1000, total: w.total + add };
+    });
+  }
+
   function setUnit(def: ItemDef, u: Unit) {
     mutate((t) => { t.items[def.m].unit = u; track(t, "cambio_unidad"); });
     setMachineUnit(def.m, u);
@@ -515,7 +588,10 @@ function Logbook({ uid }: { uid: string }) {
             {def.k === "cardio" ? (
               <>
                 <div className="fld"><span>Minutos</span><Stepper id={`in-${def.m}-min`} value={it.min} label="minutos" onStep={(d) => step(def.m, "min", 0, d)} onTyped={(r) => typed(def.m, "min", 0, r)} /></div>
-                <button type="button" className={`big ${it.done ? "okk" : ""}`} onClick={() => toggleCardio(def)}>{it.done ? "Hecho · tocar para deshacer" : "Marcar como hecho"}</button>
+                {!it.done && (work?.m === def.m
+                  ? <div className="running">Temporizador en marcha: míralo abajo</div>
+                  : <button type="button" className="big" onClick={() => startWork(def, -1)}>Iniciar temporizador de {fmtNum(it.min ?? def.min ?? 10)} min</button>)}
+                <button type="button" className={`big ${it.done ? "okk" : "ghost"}`} onClick={() => toggleCardio(def)}>{it.done ? "Hecho · tocar para deshacer" : "Ya lo hice: marcar como hecho"}</button>
               </>
             ) : (
               <>
@@ -539,7 +615,11 @@ function Logbook({ uid }: { uid: string }) {
                       </div>
                       {isHold ? (
                         <div className="fields one"><div className="fld"><span>Segundos</span>
-                          <Stepper id={`in-${def.m}-secs-${i}`} value={s.secs} label="segundos" stepLabel="5" onStep={(d) => step(def.m, "secs", i, d)} onTyped={(r) => typed(def.m, "secs", i, r)} /></div></div>
+                          <Stepper id={`in-${def.m}-secs-${i}`} value={s.secs} label="segundos" stepLabel="5" onStep={(d) => step(def.m, "secs", i, d)} onTyped={(r) => typed(def.m, "secs", i, r)} /></div>
+                          {!s.done && (work?.m === def.m && work.i === i
+                            ? <div className="running">Temporizador en marcha: míralo abajo</div>
+                            : <button type="button" className="big ghost" onClick={() => startWork(def, i)}>Iniciar temporizador de {s.secs ?? def.secs ?? 30} s</button>)}
+                        </div>
                       ) : (
                         <div className="fields">
                           <div className="fld"><span>Peso</span>
@@ -883,7 +963,8 @@ function Logbook({ uid }: { uid: string }) {
           onSaved={(d) => { upsertDiscomfort(d); setSheet(undefined); setTab("perfil"); window.scrollTo(0, 0); }} />
       )}
       <div className="dock">
-        {rest && <RestBar rest={rest} onClose={closeRest} onPlus={() => setRest({ ...rest, end: Math.max(rest.end, Date.now()) + 30000, total: rest.total + 30 })} />}
+        {work && <WorkBar work={work} onFinish={finishWork} onCancel={() => setWork(null)} onPause={pauseWork} onPlus={plusWork} />}
+        {!work && rest && <RestBar rest={rest} onClose={closeRest} onPlus={() => setRest({ ...rest, end: Math.max(rest.end, Date.now()) + 30000, total: rest.total + 30 })} />}
         <nav className="tabs" aria-label="Secciones">
           {([["hoy", "Hoy", <path key="a" d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />],
              ["prog", "Progreso", <path key="b" d="M3 17l6-6 4 4 8-8M15 7h6v6" />],
