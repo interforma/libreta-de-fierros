@@ -37,9 +37,14 @@ export async function POST(req: Request) {
   // sesiones hechas vs planificadas
   const plannedDays = new Set<number>();
   (routines || []).filter((r: any) => r.block_id === bl.id).forEach((r: any) => r.weekdays.forEach((d: number) => plannedDays.add(d)));
+  const doneSessions = (sessions || []).filter((s: any) => Object.entries(s.items || {}).some(([k, it]: [string, any]) => !k.startsWith("__") && (it?.done || it?.sets?.some((x: any) => x.done))));
+  const done = doneSessions.length;
+  // Las sesiones planificadas se cuentan desde el primer registro: antes de eso la persona entrenaba sin la app
+  // y esos días no son "sesiones que faltaron".
+  const firstLog = doneSessions.map((s: any) => s.date as string).sort()[0];
+  const from = firstLog && firstLog > bl.start_date ? firstLog : bl.start_date;
   let planned = 0;
-  for (let d = parseKey(bl.start_date); keyOf(d) <= until; d.setDate(d.getDate() + 1)) if (plannedDays.has(d.getDay())) planned++;
-  const done = (sessions || []).filter((s: any) => Object.entries(s.items || {}).some(([k, it]: [string, any]) => !k.startsWith("__") && (it?.done || it?.sets?.some((x: any) => x.done)))).length;
+  for (let d = parseKey(from); keyOf(d) <= until; d.setDate(d.getDate() + 1)) if (plannedDays.has(d.getDay())) planned++;
 
   // progreso por ejercicio: mejor kg de la primera y de la última sesión del bloque
   const all = (rows || []) as SetRow[];
@@ -61,7 +66,9 @@ export async function POST(req: Request) {
   const context = [
     profileLines((p || {}) as any),
     `BLOQUE: ${bl.name}, del ${bl.start_date} al ${end} (${bl.weeks} semanas). Enfoque: ${bl.focus || "no indicado"}. Datos hasta ${until}.`,
-    `SESIONES: ${done} hechas de ${planned} planificadas.`,
+    from > bl.start_date
+      ? `SESIONES: ${done} hechas de ${planned} planificadas desde el ${from}, cuando empezó a registrar en la app. Antes de esa fecha entrenaba igual, pero sin registro aquí: no lo trates como sesiones que faltaron.`
+      : `SESIONES: ${done} hechas de ${planned} planificadas.`,
     `PROGRESO POR EJERCICIO (mejor serie, primera vs última sesión del bloque):`,
     ...(prog.length ? prog : ["sin series con peso registradas"]),
     Object.keys(feels).length ? `SENSACIÓN MARCADA EN SERIES: ${Object.entries(feels).map(([k, v]) => `${k} ${v}`).join(", ")}.` : "",
