@@ -14,6 +14,7 @@ import {
 import { getPrefs, savePrefs, SIZES, THEMES, type Prefs } from "@/lib/prefs";
 import { callCoach } from "@/lib/coachClient";
 import { GuidePanel, MachineCatalog, PhotoSheet } from "@/components/Maquinas";
+import Punto from "@/components/Punto";
 
 /* ---------- almacenamiento local (caché y cola sin conexión) ---------- */
 const lsGet = (k: string) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
@@ -136,8 +137,9 @@ function RestBar({ rest, onPlus, onClose }: { rest: Rest; onPlus: () => void; on
     if (left < -20) onClose();
   }, [left, onClose]);
   return (
-    <div className={`timer ${left <= 0 ? "end" : ""}`} role="timer" aria-live="off">
+    <div className={`timer ${left <= 0 ? "end" : "has-punto"}`} role="timer" aria-live="off">
       <div className="fill" style={{ width: `${left <= 0 ? 100 : 100 * (1 - left / rest.total)}%` }} />
+      {left > 0 && <Punto expr="atento" size={44} alive />}
       <div className="t">{left <= 0 ? "0:00" : mmss(left)}</div>
       <div className="l">{left <= 0 ? "Listo: a la siguiente serie" : rest.label}
         {rest.water && left > 0 && <span className="water">Toma unos sorbos de agua (150–250 ml)</span>}</div>
@@ -364,6 +366,20 @@ function Logbook({ uid }: { uid: string }) {
   const deloadNow = isDeload(blocks, todayKey);
   /* sugerencia del balance del bloque anterior: aparece solo la primera vez que toca el ejercicio en el bloque nuevo */
   const prevBlock = curBlock ? blocks.filter((b) => b.start_date < curBlock.start_date).slice(-1)[0] : undefined;
+  /** ¿Hubo un logro real hoy? Subió el peso respecto de la vez anterior o completó el tope del rango en todas las series. */
+  function sessionWin(defs: ItemDef[]): boolean {
+    if (!today || deloadNow) return false;
+    return defs.some((def) => {
+      const it = today.items[def.m]; const ds = it?.sets?.filter((x) => x.done) || [];
+      if (!ds.length || def.k === "hold" || def.k === "cardio") return false;
+      const best = Math.max(...ds.map((x) => x.kg || 0));
+      const last = lastFor(sessions, def.m, todayKey, (k) => isDeload(blocks, k));
+      const prev = last ? Math.max(0, ...(last.it.sets || []).filter((x) => x.done).map((x) => x.kg || 0)) : 0;
+      if (prev && best > prev + 0.01) return true;
+      const top = def.reps?.[1];
+      return !!top && ds.length >= (def.sets || 3) && ds.every((x) => (x.reps || 0) >= top);
+    });
+  }
   function carryTip(m: string): string | null {
     if (!curBlock || !prevBlock) return null;
     const tip = prevBlock.balance?.tips?.[m] ?? balances[prevBlock.id]?.tips?.[m];
@@ -723,7 +739,16 @@ function Logbook({ uid }: { uid: string }) {
       <section className="card closecard" aria-live="polite">
         <div className="eyebrow">Sesión completa{mins && mins < 300 ? ` · ${mins} min` : ""}</div>
         <div className="coach">
-          <span className="who">Tu entrenador</span>
+          {(() => {
+            // Punto solo aparece cuando el entrenador está diciendo algo; celebra solo si hubo un logro real.
+            const expr = meta.__resumen?.text ? (sessionWin(r.items) ? "celebra" : "atento") : coach.busy ? "piensa" : coach.err ? "uy" : null;
+            return (
+              <div className="who-row">
+                {expr && <Punto key={expr} expr={expr} size={36} alive={expr === "piensa"} />}
+                <span className="who">Tu entrenador</span>
+              </div>
+            );
+          })()}
           {meta.__resumen?.text ? <p>{meta.__resumen.text}</p>
             : coach.busy ? <p className="meta">Preparando un comentario sobre tu sesión…</p>
             : <>

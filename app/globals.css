@@ -308,3 +308,17 @@ img{max-width:100%}
 .tip.carry b{font-size:.85rem;text-transform:uppercase;letter-spacing:.04em;color:var(--accent-text)}
 .tip.carry .linkbtn{align-self:flex-start;min-height:44px;padding:0}
 .carrymark{font-size:.85rem;color:var(--accent-text);margin-top:2px}
+
+/* Punto (design system Interforma): entra una vez; el reposo vivo solo con .alive */
+.punto{color:var(--ink);flex:none;display:block;overflow:visible;animation:p-in .4s cubic-bezier(.16,1,.3,1) both}
+@keyframes p-in{from{opacity:0;transform:translateY(6px) scale(.9)}to{opacity:1;transform:none}}
+.punto.alive .p-body{animation:p-bob 3.2s ease-in-out infinite}
+.punto.alive .p-blink{transform-box:fill-box;transform-origin:center;animation:p-blink 4.6s linear infinite}
+.punto.alive .p-look{animation:p-look 9s ease-in-out infinite}
+@keyframes p-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes p-blink{0%,90%,100%{transform:scaleY(1)}93%{transform:scaleY(.08)}96%{transform:scaleY(1)}}
+@keyframes p-look{0%,30%{transform:translateX(0)}36%,55%{transform:translateX(8px)}61%,78%{transform:translateX(-6px)}84%,100%{transform:translateX(0)}}
+@media (prefers-reduced-motion: reduce){.punto,.punto *{animation:none!important}}
+.coach .who-row{display:flex;align-items:center;gap:10px}
+.timer.has-punto{grid-template-columns:auto 1fr auto;grid-template-areas:"t l p" "b b b"}
+.timer .punto{grid-area:p;align-self:center;color:var(--plate-ink)}
