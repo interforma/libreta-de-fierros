@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { askClaude, CoachError, MODEL_DEEP, profileLines, userDb, wText, type SetRow } from "@/lib/coach";
+import { askClaude, CoachError, MODEL_DEEP, MODEL_FAST, profileLines, userDb, wText, type SetRow } from "@/lib/coach";
 import { blockEnd, keyOf, parseKey, type Block } from "@/lib/logic";
 
 // Balance de un bloque de entrenamiento: qué avanzó, qué conviene cuidar y qué proponer para el siguiente.
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   const [{ data: p }, { data: machines }, { data: routines }, { data: rows }, { data: sessions }, { data: dis }, { data: checks }] = await Promise.all([
     db.from("profiles").select("*").maybeSingle(),
     db.from("machines").select("slug,name,unit"),
-    db.from("routines").select("slug,name,weekdays,block_id"),
+    db.from("routines").select("slug,name,weekdays,block_id,items"),
     db.from("set_log").select("date,machine_slug,unit,kg,lb,reps,secs,done,feel").gte("date", bl.start_date).lte("date", until).eq("done", true).order("date").limit(5000),
     db.from("sessions").select("date,items").gte("date", bl.start_date).lte("date", until),
     db.from("discomforts").select("date,area,side,intensity,resolved").gte("date", bl.start_date).lte("date", until),
@@ -79,9 +79,34 @@ export async function POST(req: Request) {
 
   try {
     const text = await askClaude({ model: MODEL_DEEP, system: SYSTEM, content: context, maxTokens: 700 });
-    return NextResponse.json({ text, done, planned, at: new Date().toISOString() });
+    // Sugerencias por ejercicio del próximo bloque, sacadas del mismo texto que lee la persona,
+    // para mostrarlas en la tarjeta del ejercicio el día que le toque.
+    const tips = next ? await tipsFor(text, (routines || []).filter((r: any) => r.block_id === next.id), name).catch(() => ({})) : {};
+    const balance = { text, done, planned, at: new Date().toISOString(), tips };
+    await db.from("blocks").update({ balance }).eq("id", bl.id);
+    return NextResponse.json(balance);
   } catch (e) {
     const err = e as CoachError;
     return NextResponse.json({ error: err.message }, { status: err.status || 500 });
   }
+}
+
+const TIPS_SYSTEM = `Lees el balance de un bloque de gimnasio y la lista de ejercicios del bloque siguiente.
+Devuelve SOLO un objeto JSON {"<slug>": "<sugerencia>"} con los ejercicios de la lista a los que el balance les da una indicación concreta (subir peso, rango de repeticiones, técnica, variante, ir liviano).
+Cada sugerencia: una frase corta en español de Chile, tuteando, máximo 16 palabras, que diga qué hacer hoy en ese ejercicio. No inventes nada que el balance no diga. Una indicación general (por ejemplo "ejercicios grandes") aplícala solo a los ejercicios que claramente corresponden. Si ninguno aplica, devuelve {}.`;
+
+async function tipsFor(text: string, nextRoutines: any[], name: (m: string) => string): Promise<Record<string, string>> {
+  const slugs = Array.from(new Set(nextRoutines.flatMap((r) => (r.items || []).map((x: any) => x.m as string)).filter(Boolean)));
+  if (!slugs.length) return {};
+  const list = slugs.map((s) => {
+    const def = nextRoutines.flatMap((r) => r.items || []).find((x: any) => x.m === s);
+    return `${s}: ${def?.label || name(s)}${def?.reps ? ` (${def.reps[0]}–${def.reps[1]} reps)` : ""}`;
+  }).join("\n");
+  const raw = await askClaude({ model: MODEL_FAST, system: TIPS_SYSTEM, content: `BALANCE:\n${text}\n\nEJERCICIOS DEL BLOQUE SIGUIENTE:\n${list}`, maxTokens: 600 });
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return {};
+  const obj = JSON.parse(m[0]);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(obj)) if (slugs.includes(k) && typeof v === "string" && v.trim()) out[k] = v.trim().slice(0, 160);
+  return out;
 }

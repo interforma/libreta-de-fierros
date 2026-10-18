@@ -48,10 +48,12 @@ export type Block = {
   weeks: number;
   deload_week: number | null;
   focus: string;
+  /** Balance al cerrar el bloque; tips = sugerencia por ejercicio para el bloque siguiente. */
+  balance?: { text: string; done: number; planned: number; at: string; tips?: Record<string, string> } | null;
 };
 
 export type SetLog = { kg?: number | null; lb?: number | null; reps?: number | null; secs?: number | null; done: boolean };
-export type ItemLog = { unit?: Unit; sets?: SetLog[]; min?: number | null; done?: boolean; feel?: string | null; note?: string };
+export type ItemLog = { unit?: Unit; sets?: SetLog[]; min?: number | null; done?: boolean; feel?: string | null; note?: string; tip_seen?: boolean };
 export type Session = { date: string; routine_slug: string | null; items: Record<string, ItemLog>; client_updated_at: number };
 
 /* fechas */

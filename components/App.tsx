@@ -163,7 +163,7 @@ function beep() {
 }
 
 /* ---------- rutas de IA (entrenador) ---------- */
-type Balance = { text: string; done: number; planned: number; at: string };
+type Balance = { text: string; done: number; planned: number; at: string; tips?: Record<string, string> };
 const COSTS: [string, string][] = [["nada", "Nada"], ["registrar", "Registrar las series"], ["maquina", "Alguna máquina"], ["cansancio", "Terminar la rutina"]];
 
 /* ===================================================================== */
@@ -225,11 +225,13 @@ function Logbook({ uid }: { uid: string }) {
         supabase.from("machines").select("slug,name,muscle_group,how_to,unit,settings,photo_path,guide,guide_at,source"),
         supabase.from("routines").select("slug,name,type,weekdays,duration_min,items,position,block_id").order("position"),
         supabase.from("sessions").select("date,routine_slug,items,client_updated_at").order("date", { ascending: false }).limit(400),
-        supabase.from("blocks").select("id,name,start_date,weeks,deload_week,focus").order("start_date"),
+        supabase.from("blocks").select("id,name,start_date,weeks,deload_week,focus,balance").order("start_date"),
       ]);
       if (!alive) return;
       if (m.error || r.error || s.error || b.error) { setSync("offline"); setLoaded(true); return; }
       setBlocks(b.data as Block[]); lsSet(`lf.${uid}.blocks`, b.data);
+      // el balance guardado en el servidor manda: así se ve igual en cualquier teléfono
+      setBalances((prev) => { const n = { ...prev }; (b.data as Block[]).forEach((x) => { if (x.balance) n[x.id] = x.balance; }); lsSet(`lf.${uid}.balance`, n); return n; });
       const mm: Record<string, Machine> = {};
       (m.data as Machine[]).forEach((x) => (mm[x.slug] = x));
       const ss: Record<string, Session> = {};
@@ -360,6 +362,15 @@ function Logbook({ uid }: { uid: string }) {
   const curRoutineRef = useRef(curRoutine); curRoutineRef.current = curRoutine;
   const curBlock = activeBlock(blocks, todayKey);
   const deloadNow = isDeload(blocks, todayKey);
+  /* sugerencia del balance del bloque anterior: aparece solo la primera vez que toca el ejercicio en el bloque nuevo */
+  const prevBlock = curBlock ? blocks.filter((b) => b.start_date < curBlock.start_date).slice(-1)[0] : undefined;
+  function carryTip(m: string): string | null {
+    if (!curBlock || !prevBlock) return null;
+    const tip = prevBlock.balance?.tips?.[m] ?? balances[prevBlock.id]?.tips?.[m];
+    if (!tip) return null;
+    const usedBefore = Object.values(sessions).some((s) => s.date >= curBlock.start_date && s.date < todayKey && (s.items[m]?.done || s.items[m]?.sets?.some((x) => x.done)));
+    return usedBefore ? null : tip;
+  }
   const nextUndone = (t: Session) => curRoutine?.items.find((d) => !itemDone(d, t.items[d.m])) || null;
   function chooseRoutine(slug: string) {
     const t = buildToday(slug, todayRef.current && todayRef.current.date === todayKey ? todayRef.current : sessions[todayKey]);
@@ -483,6 +494,7 @@ function Logbook({ uid }: { uid: string }) {
     try {
       const j = await callCoach<Balance>("/api/balance", { block_id: blockId });
       setBalances((b) => { const n = { ...b, [blockId]: j }; lsSet(`lf.${uid}.balance`, n); return n; });
+      setBlocks((bs) => { const n = bs.map((x) => (x.id === blockId ? { ...x, balance: j } : x)); lsSet(`lf.${uid}.blocks`, n); return n; });
     } catch (e: any) { setBalanceErr(e.message); }
     setBusyBalance(false);
   }
@@ -562,17 +574,25 @@ function Logbook({ uid }: { uid: string }) {
     const conv = (st: any) => { const v = wIn(st, u); return v == null || v === 0 ? "\u00a0" : `equivale a ${fmtNum(u === "lb" ? toKg(v) : toLb(v))} ${o}`; };
     const nDone = it.sets ? it.sets.filter((x) => x.done).length : 0;
     const okIcon = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>;
+    const carry = !it.tip_seen ? carryTip(def.m) : null;
     return (
       <section className={`card ${done ? "done" : ""}`} id={`card-${def.m}`}>
         <button type="button" className="head" aria-expanded={isOpen}
           onClick={() => { setOpen(isOpen ? "" : def.m); setTimeout(() => document.getElementById("card-" + def.m)?.scrollIntoView({ block: "start", behavior: "smooth" }), 30); }}>
           <img className="thumb" src={img} alt="" />
-          <div><div className="name">{def.label || m.name}</div><div className="meta">{targetText(it.sets ? { ...def, sets: it.sets.length } : def)}</div></div>
+          <div><div className="name">{def.label || m.name}</div><div className="meta">{targetText(it.sets ? { ...def, sets: it.sets.length } : def)}</div>{carry && !done && <div className="carrymark">Tiene una nota del balance</div>}</div>
           {done ? <span className="tick">{okIcon}Hecho</span> : def.k === "cardio" ? <span /> :
             <span className="count">{nDone} de {it.sets!.length}</span>}
         </button>
         {isOpen && (
           <div className="body">
+            {carry && (
+              <div className="tip carry">
+                <b>Del balance del {prevBlock!.name}</b>
+                <span>{carry}</span>
+                <button type="button" className="linkbtn" onClick={() => mutate((s) => { s.items[def.m].tip_seen = true; })}>Entendido, ocultar</button>
+              </div>
+            )}
             {def.note && <p className="tip">{def.note}</p>}
             <p className="how">{m.how_to}</p>
             <details className="photo-toggle">
@@ -919,6 +939,15 @@ function Logbook({ uid }: { uid: string }) {
             {balances[sel.id] ? <>
               <p className="meta num" style={{ margin: 0 }}>{balances[sel.id].done} de {balances[sel.id].planned} sesiones hechas · preparado el {shortDate(balances[sel.id].at.slice(0, 10))}</p>
               <div className="balance">{balances[sel.id].text}</div>
+              {Object.keys(balances[sel.id].tips || {}).length > 0 && (
+                <div className="tip carry">
+                  <b>Notas que verás en el bloque siguiente</b>
+                  <span>La primera vez que te toque cada ejercicio, su tarjeta te lo recuerda:</span>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {Object.entries(balances[sel.id].tips!).map(([m, t]) => <li key={m}><b style={{ textTransform: "none", letterSpacing: 0, color: "var(--ink)" }}>{machines[m]?.name || m}:</b> {t}</li>)}
+                  </ul>
+                </div>
+              )}
               <button type="button" className="linkbtn" disabled={busyBalance} onClick={() => askBalance(sel.id)}>{busyBalance ? "Actualizando…" : "Actualizar balance"}</button>
             </> : <>
               <p style={{ margin: 0 }}>Revisa qué avanzó en estas {sel.weeks} semanas, qué conviene cuidar y qué proponer para el siguiente bloque.</p>
