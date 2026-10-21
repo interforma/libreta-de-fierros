@@ -902,24 +902,61 @@ function Logbook({ uid }: { uid: string }) {
     const plan = routinesOf(routines, curBlock?.id);
     const hasRoutine = (di: number) => plan.some((r) => r.weekdays.includes(di));
     const planned = week.filter((w) => hasRoutine(w.di)).length;
-    let wk = 0, total = 0;
-    keys.forEach((k) => { if (!sessionDone(k)) return; total++; if (k >= mk) wk++; });
+    let wk = 0;
+    keys.forEach((k) => { if (sessionDone(k) && k >= mk) wk++; });
     const rows = Object.keys(machines).map((m) => ({
       m, pts: keys.map((k) => { const mt = metricOf(sessions[k].items?.[m]); return mt ? { k, ...mt, it: sessions[k].items[m] } : null; }).filter(Boolean) as any[],
     })).filter((r) => r.pts.length).sort((a, b) => (a.pts[a.pts.length - 1].k < b.pts[b.pts.length - 1].k ? 1 : -1));
     return (
       <>
         {Header({ title: "Progreso", eyebrow: "Tu progreso" })}
-        <section className="card" style={{ padding: 14, marginTop: 14 }}>
-          <div className="stats two" style={{ marginTop: 0 }}>
-            <div className="stat"><div className="v">{wk} <small>de {planned || "—"}</small></div><div className="k">sesiones esta semana</div></div>
-            <div className="stat"><div className="v">{total}</div><div className="k">sesiones en total</div></div>
-          </div>
-          <div className="week" role="img" aria-label={`Esta semana: ${wk} de ${planned} sesiones hechas`}>
-            {week.map((w) => <i key={w.k} className={sessionDone(w.k) ? "ok" : w.k === todayKey ? "today" : !hasRoutine(w.di) ? "rest" : ""} />)}
-          </div>
-          <div className="weekl" aria-hidden="true">{week.map((w) => <span key={w.k} className={w.k === todayKey ? "today" : ""}>{w.k === todayKey ? "Hoy" : DAYS[w.di].slice(0, 3)}</span>)}</div>
-        </section>
+        {(() => {
+          // Resumen motivador con datos reales: Punto recorre la semana hasta el último día entrenado.
+          const plannedSoFar = week.filter((w) => w.k <= todayKey && hasRoutine(w.di)).length;
+          const lastIdx = week.reduce((a, w, i) => (sessionDone(w.k) ? i : a), -1);
+          const pos = lastIdx >= 0 ? lastIdx : week.findIndex((w) => w.k === todayKey);
+          // ejercicios hechos esta semana con más peso que la vez anterior (fuera de la semana)
+          const kgBest = (it?: ItemLog) => Math.max(0, ...((it?.sets || []).filter((x) => x.done).map((x) => x.kg || 0)));
+          let ups = 0, tried = 0;
+          Object.keys(machines).forEach((m) => {
+            const thisWk = week.filter((w) => w.k <= todayKey && kgBest(sessions[w.k]?.items?.[m]) > 0);
+            if (!thisWk.length) return;
+            const prev = lastFor(sessions, m, mk, (k) => isDeload(blocks, k));
+            if (!prev || !kgBest(prev.it)) return;
+            tried++;
+            if (Math.max(...thisWk.map((w) => kgBest(sessions[w.k].items[m]))) > kgBest(prev.it) + 0.01) ups++;
+          });
+          // último récord: la sesión más reciente en que un ejercicio superó su mejor peso anterior
+          let rec: { m: string; k: string; p: any } | null = null;
+          rows.forEach(({ m, pts }) => {
+            let best = 0;
+            pts.filter((p: any) => p.u === "kg").forEach((p: any, j: number) => {
+              if (j > 0 && p.v > best + 0.01 && (!rec || p.k > rec.k)) rec = { m, k: p.k, p };
+              best = Math.max(best, p.v);
+            });
+          });
+          const onTrack = plannedSoFar > 0 && wk >= plannedSoFar;
+          const expr = ups > 0 || (onTrack && wk > 0) ? "celebra" : "atento";
+          const head = wk === 0 ? (plannedSoFar ? "Tu semana parte cuando tú quieras" : "Semana nueva, todo por delante")
+            : onTrack ? `Vas al día: ${wk} de ${planned} sesiones` : `Llevas ${wk} de ${planned} sesiones esta semana`;
+          const r0 = rec as { m: string; k: string; p: any } | null;
+          return (
+            <section className="card hero">
+              <div className="ride" style={{ ["--x" as any]: `${((pos + 0.5) / 7) * 100}%` }}>
+                <span className="rider"><Punto key={`${expr}-${pos}`} expr={expr} size={56} label={head} /></span>
+              </div>
+              <div className="week" role="img" aria-label={`Esta semana: ${wk} de ${planned} sesiones hechas`}>
+                {week.map((w) => <i key={w.k} className={sessionDone(w.k) ? "ok" : w.k === todayKey ? "today" : !hasRoutine(w.di) ? "rest" : ""} />)}
+              </div>
+              <div className="weekl" aria-hidden="true">{week.map((w) => <span key={w.k} className={w.k === todayKey ? "today" : ""}>{w.k === todayKey ? "Hoy" : DAYS[w.di].slice(0, 3)}</span>)}</div>
+              <h2 className="hero-h">{head}</h2>
+              <div className="hero-facts">
+                {tried > 0 && <div className="fact"><b className="num">{ups} de {tried}</b><span>ejercicios con más peso que la vez anterior</span></div>}
+                {r0 && <div className="fact"><b className="num">{fmtW(r0.p.v, r0.p.lb, machines[r0.m]?.unit || "kg")}</b><span>último récord: {machines[r0.m]?.name}, {r0.k === todayKey ? "hoy" : shortDate(r0.k)}</span></div>}
+              </div>
+            </section>
+          );
+        })()}
         {!rows.length ? <div className="empty">Aún no hay registros. Cuando marques tu primera serie en <b>Hoy</b>, aquí verás cómo sube el peso de cada máquina.</div> : (
           <>
           <h2 className="sect">Tus pesos</h2>
