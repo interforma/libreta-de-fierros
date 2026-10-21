@@ -52,8 +52,10 @@ export type Block = {
   balance?: { text: string; done: number; planned: number; at: string; tips?: Record<string, string> } | null;
 };
 
-export type SetLog = { kg?: number | null; lb?: number | null; reps?: number | null; secs?: number | null; done: boolean };
-export type ItemLog = { unit?: Unit; sets?: SetLog[]; min?: number | null; done?: boolean; feel?: string | null; note?: string; tip_seen?: boolean };
+/** Una serie. Con pirámide, cada serie puede tener varias tandas con el mismo peso:
+ *  reps = repeticiones por tanda, tandas = cuántas veces se repite, tdone = tandas ya hechas. */
+export type SetLog = { kg?: number | null; lb?: number | null; reps?: number | null; secs?: number | null; tandas?: number | null; tdone?: number; done: boolean };
+export type ItemLog = { unit?: Unit; sets?: SetLog[]; min?: number | null; done?: boolean; feel?: string | null; note?: string; tip_seen?: boolean; photos?: string[] };
 export type Session = { date: string; routine_slug: string | null; items: Record<string, ItemLog>; client_updated_at: number };
 
 /* fechas */
@@ -129,6 +131,9 @@ export function freshItem(def: ItemDef, sessions: Record<string, Session>, machi
     const p = last?.it.sets?.[i] || last?.it.sets?.[last.it.sets.length - 1];
     if (def.k === "hold") { sets.push({ secs: p?.secs ?? def.secs ?? 30, done: false }); continue; }
     const st: SetLog = { kg: p?.kg ?? null, lb: p?.lb ?? toLb(p?.kg ?? null), reps: newBlock ? def.reps?.[0] ?? 10 : p?.reps ?? def.reps?.[0] ?? 10, done: false };
+    if (p?.tandas && p.tandas > 1) st.tandas = p.tandas;
+    // registros antiguos con las tandas sumadas (ej. 30 reps en una serie): partir del rango del plan
+    else if (!newBlock && (p?.reps ?? 0) > (def.reps?.[1] ?? 12) * 1.6) st.reps = def.reps?.[0] ?? 10;
     if (deload && (st.kg || st.lb)) {
       const w = wIn(st, unit)!;
       setW(st, unit, roundTo(w * 0.6, unit === "lb" ? 5 : 2.5) || (unit === "lb" ? 5 : 2.5));
@@ -158,6 +163,8 @@ export const FOOD: Record<string, [string, string][]> = {
 };
 
 /* progreso: mejor serie de cada sesión (en kg, la unidad interna) */
+/** Repeticiones de una serie para mostrar: "10" o "10×3" si fueron tandas. */
+export const repsOf = (x: SetLog) => (x.tandas && x.tandas > 1 ? `${x.reps ?? "?"}×${x.tandas}` : `${x.reps ?? "?"}`);
 export function metricOf(it?: ItemLog) {
   if (!it) return null;
   if (it.sets) {
@@ -166,7 +173,7 @@ export function metricOf(it?: ItemLog) {
     if (ds[0].secs != null) return { v: Math.max(...ds.map((x) => x.secs || 0)), u: "s" as const };
     const best = ds.reduce<SetLog | null>((a, x) => ((x.kg || 0) > (a?.kg || 0) ? x : a), null);
     return best && best.kg
-      ? { v: best.kg, lb: best.lb, unit: unitOf(it), u: "kg" as const, reps: ds.map((x) => x.reps) }
+      ? { v: best.kg, lb: best.lb, unit: unitOf(it), u: "kg" as const, reps: ds.map(repsOf) }
       : { v: Math.max(...ds.map((x) => x.reps || 0)), u: "reps" as const };
   }
   if (it.done) return { v: it.min || 0, u: "min" as const };

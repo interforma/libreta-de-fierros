@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     db.from("profiles").select("*").maybeSingle(),
     db.from("machines").select("slug,name,unit"),
     db.from("routines").select("slug,name,weekdays,block_id,items"),
-    db.from("set_log").select("date,machine_slug,unit,kg,lb,reps,secs,done,feel").gte("date", bl.start_date).lte("date", until).eq("done", true).order("date").limit(5000),
+    db.from("set_log").select("date,machine_slug,unit,kg,lb,reps,secs,done,feel,tandas").gte("date", bl.start_date).lte("date", until).eq("done", true).order("date").limit(5000),
     db.from("sessions").select("date,items").gte("date", bl.start_date).lte("date", until),
     db.from("discomforts").select("date,area,side,intensity,resolved").gte("date", bl.start_date).lte("date", until),
     db.from("checkups").select("date,kind,weight_kg,muscle_kg,body_fat_pct,notes").gte("date", bl.start_date).lte("date", until).order("date"),

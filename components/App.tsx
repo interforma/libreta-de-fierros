@@ -8,11 +8,12 @@ import { CheckupList, DiscomfortList, DiscomfortSheet, ProfileCard, type Checkup
 import {
   DAYS, MONTHS, FEELS, FOOD, feelName, fmtNum, fmtW, freshItem, itemDone, keyOf, lastFor, metricOf, mmss,
   parseKey, parseNum, routineForDay, setW, shortDate, targetText, toKg, toLb, unitOf, wIn,
-  activeBlock, weekOf, blockEnd, isDeload, routinesOf,
+  activeBlock, weekOf, blockEnd, isDeload, routinesOf, repsOf,
   type Block, type ItemDef, type ItemLog, type Machine, type Routine, type Session, type Unit,
 } from "@/lib/logic";
 import { getPrefs, savePrefs, SIZES, THEMES, type Prefs } from "@/lib/prefs";
-import { callCoach } from "@/lib/coachClient";
+import { callCoach, shrinkPhoto } from "@/lib/coachClient";
+import { flushPhotos, progressPath, queueAll, queueDel, queuePut, uploadOne } from "@/lib/progressPhotos";
 import { GuidePanel, MachineCatalog, PhotoSheet } from "@/components/Maquinas";
 import Punto from "@/components/Punto";
 
@@ -215,6 +216,48 @@ function Logbook({ uid }: { uid: string }) {
     setMachines((all) => { const n = { ...all, [m.slug]: { ...all[m.slug], ...m } }; lsSet(K.m, n); return n; });
   }
   const setGuide = (slug: string, guide: string) => putMachine({ ...machines[slug], guide });
+
+  /* ---- fotos de progreso por máquina ---- */
+  const [localPhotos, setLocalPhotos] = useState<Record<string, string>>({}); // ruta → URL local (fotos recién sacadas o pendientes)
+  const [viewer, setViewer] = useState<{ src: string; caption: string } | null>(null);
+  const [photoBusy, setPhotoBusy] = useState<string | null>(null);
+  useEffect(() => {
+    queueAll().then((q) => setLocalPhotos((l) => { const n = { ...l }; Object.entries(q).forEach(([k, b]) => { if (!n[k]) n[k] = URL.createObjectURL(b); }); return n; }));
+    flushPhotos();
+    const on = () => flushPhotos();
+    window.addEventListener("online", on);
+    return () => window.removeEventListener("online", on);
+  }, []);
+  useEffect(() => {
+    // URLs firmadas para las fotos guardadas en el servidor (las locales ya se ven)
+    const need = Object.values(sessions).flatMap((x) => Object.values(x.items || {}).flatMap((it: any) => (Array.isArray(it?.photos) ? it.photos : [])))
+      .filter((p: string) => !photoUrls[p] && !localPhotos[p]);
+    if (!need.length || !navigator.onLine) return;
+    supabase.storage.from("machine-photos").createSignedUrls(need.slice(0, 100), 7 * 24 * 3600).then(({ data }) => {
+      if (!data) return;
+      setPhotoUrls((u) => { const n = { ...u }; data.forEach((d) => { if (d.path && d.signedUrl) n[d.path] = d.signedUrl; }); return n; });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, tab]);
+  const photoSrc = (p: string) => localPhotos[p] || photoUrls[p] || "";
+  async function addPhoto(m: string, f: File | undefined) {
+    if (!f || !todayRef.current) return;
+    setPhotoBusy(m);
+    try {
+      const { blob } = await shrinkPhoto(f, 1280);
+      const path = progressPath(uid, todayRef.current.date, m);
+      await queuePut(path, blob);
+      setLocalPhotos((l) => ({ ...l, [path]: URL.createObjectURL(blob) }));
+      mutate((t) => { const it = t.items[m]; it.photos = [...(it.photos || []), path]; track(t, "foto"); });
+      if (navigator.onLine) uploadOne(path, blob).catch(() => {});
+    } catch {}
+    setPhotoBusy(null);
+  }
+  function removePhoto(m: string, path: string) {
+    mutate((t) => { const it = t.items[m]; it.photos = (it.photos || []).filter((x) => x !== path); });
+    queueDel(path);
+    supabase.storage.from("machine-photos").remove([path]).catch(() => {});
+  }
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => { const n = { ...prefs, [k]: v }; setPrefsState(n); savePrefs(n); };
 
   /* ---- carga inicial ---- */
@@ -393,7 +436,7 @@ function Logbook({ uid }: { uid: string }) {
     if (t) { track(t, "cambio_rutina"); commit(t); }
     setOpen(null); setPicking(false); setTab("hoy"); window.scrollTo(0, 0);
   }
-  function step(m: string, f: "w" | "reps" | "secs" | "min", i: number, dir: 1 | -1) {
+  function step(m: string, f: "w" | "reps" | "secs" | "min" | "tandas", i: number, dir: 1 | -1) {
     mutate((t) => {
       const it = t.items[m];
       if (f === "w") {
@@ -401,21 +444,34 @@ function Logbook({ uid }: { uid: string }) {
         setW(st, u, Math.max(0, Math.round(((wIn(st, u) ?? 0) + dir * (u === "lb" ? 5 : 2.5)) * 10) / 10));
         it.sets!.forEach((x, j) => { if (j > i && !x.done) setW(x, u, wIn(st, u)); });
       } else if (f === "min") it.min = Math.max(0, (it.min ?? 0) + dir);
+      else if (f === "tandas") {
+        const v = Math.min(6, Math.max(1, (it.sets![i].tandas || 1) + dir));
+        it.sets!.forEach((x, j) => { if (j === i || (j > i && !x.done)) { x.tandas = v; x.tdone = Math.min(x.tdone || 0, v - 1); } });
+      }
       else { const st = it.sets![i] as any; st[f] = Math.max(0, (st[f] ?? 0) + dir * (f === "secs" ? 5 : 1)); }
     });
   }
-  function typed(m: string, f: "w" | "reps" | "secs" | "min", i: number, raw: string) {
+  function typed(m: string, f: "w" | "reps" | "secs" | "min" | "tandas", i: number, raw: string) {
     const v = parseNum(raw); const val = v == null ? null : Math.max(0, v);
     mutate((t) => {
       const it = t.items[m];
       if (f === "w") { const u = unitOf(it); setW(it.sets![i], u, val); it.sets!.forEach((x, j) => { if (j > i && !x.done) setW(x, u, val); }); track(t, "peso_escrito"); }
       else if (f === "min") it.min = val;
+      else if (f === "tandas") { const v = Math.min(6, Math.max(1, Math.round(val || 1))); it.sets!.forEach((x, j) => { if (j === i || (j > i && !x.done)) { x.tandas = v; x.tdone = Math.min(x.tdone || 0, v - 1); } }); }
       else { (it.sets![i] as any)[f] = val; track(t, f === "reps" ? "reps_escritas" : "segundos_escritos"); }
     });
   }
   function toggleSet(def: ItemDef, i: number) {
     let after: Session | null = null;
-    mutate((t) => { const s = t.items[def.m].sets![i]; if (s.done) track(t, "deshacer_serie"); s.done = !s.done; after = t; });
+    const cur = todayRef.current?.items[def.m]?.sets?.[i];
+    const nT = cur?.tandas || 1, tdone = cur?.tdone || 0;
+    // Pirámide: con varias tandas, cada toque marca una tanda y lanza el descanso; la última cierra la serie.
+    if (cur && !cur.done && nT > 1 && tdone < nT - 1) {
+      mutate((t) => { t.items[def.m].sets![i].tdone = tdone + 1; });
+      startRest(def.rest || 60, `Descanso · luego tanda ${tdone + 2} de ${nT} (serie ${i + 1})`);
+      return;
+    }
+    mutate((t) => { const s = t.items[def.m].sets![i]; if (s.done) { track(t, "deshacer_serie"); s.tdone = 0; } else if (nT > 1) s.tdone = nT; s.done = !s.done; after = t; });
     const t = todayRef.current!; const it = t.items[def.m];
     if (!it.sets![i].done) return;
     if (it.sets!.every((x) => x.done)) {
@@ -556,7 +612,7 @@ function Logbook({ uid }: { uid: string }) {
       const u = unitOf(it);
       const best = ds.reduce<any>((a, x) => ((x.kg || 0) > (a?.kg || 0) ? x : a), null);
       const kg = best?.kg || 0;
-      line = `${kg ? fmtW(best.kg, best.lb, u) + " × " : ""}${ds.map((x) => x.reps).join(", ")} reps`;
+      line = `${kg ? fmtW(best.kg, best.lb, u) + " × " : ""}${ds.map(repsOf).join(", ")} reps`;
       const top = def.reps![1];
       if (kg && !deloadNow && (it.feel === "facil" || (ds.length >= (def.sets || 3) && ds.every((x) => (x.reps || 0) >= top))))
       {
@@ -661,12 +717,17 @@ function Logbook({ uid }: { uid: string }) {
                           <div className="fld"><span>Peso</span>
                             <Stepper id={`in-${def.m}-w-${i}`} value={wIn(s, u)} label={`peso en ${u}`} sub={u} stepLabel={u === "lb" ? "5" : "2,5"} onStep={(d) => step(def.m, "w", i, d)} onTyped={(r) => typed(def.m, "w", i, r)} />
                             <span className="conv num">{conv(s)}</span></div>
-                          <div className="fld"><span>Repeticiones</span>
+                          <div className="fld"><span>{(s.tandas || 1) > 1 ? "Reps por tanda" : "Repeticiones"}</span>
                             <Stepper id={`in-${def.m}-reps-${i}`} value={s.reps} label="repeticiones" sub="reps" onStep={(d) => step(def.m, "reps", i, d)} onTyped={(r) => typed(def.m, "reps", i, r)} /></div>
+                          <div className="fld tandas"><span>Tandas con este peso</span>
+                            <Stepper id={`in-${def.m}-tandas-${i}`} value={s.tandas || 1} label="tandas" sub={(s.tandas || 1) > 1 ? `= ${(s.reps || 0) * (s.tandas || 1)} reps` : "tanda"} onStep={(d) => step(def.m, "tandas", i, d)} onTyped={(r) => typed(def.m, "tandas", i, r)} /></div>
                         </div>
                       )}
+                      {!s.done && (s.tdone || 0) > 0 && <div className="tdots" aria-label={`${s.tdone} de ${s.tandas} tandas hechas`}>{Array.from({ length: s.tandas || 1 }, (_, k) => <i key={k} className={k < (s.tdone || 0) ? "on" : ""} />)}<span>{s.tdone} de {s.tandas} tandas</span></div>}
                       <button type="button" className={`check ${s.done ? "on" : ""}`} aria-pressed={s.done} onClick={() => toggleSet(def, i)}>
-                        {s.done ? "Deshacer" : <>{okIcon}Marcar serie {i + 1} como hecha</>}
+                        {s.done ? "Deshacer" : (s.tandas || 1) > 1 && (s.tdone || 0) < (s.tandas || 1) - 1
+                          ? <>{okIcon}Marcar tanda {(s.tdone || 0) + 1} de {s.tandas}</>
+                          : <>{okIcon}Marcar serie {i + 1} como hecha</>}
                       </button>
                     </div>
                   ))}
@@ -679,6 +740,19 @@ function Logbook({ uid }: { uid: string }) {
                   </div>
                 </div>
                 <NoteInput id={`note-${def.m}`} value={it.note || ""} onSave={(v) => mutate((t) => { t.items[def.m].note = v; })} />
+                <div className="pphotos">
+                  {(it.photos || []).map((p) => (
+                    <div className="pthumb" key={p}>
+                      <button type="button" className="pimg" aria-label="Ver foto" onClick={() => setViewer({ src: photoSrc(p), caption: `${m.name} · hoy` })}>{photoSrc(p) && <img src={photoSrc(p)} alt="" />}</button>
+                      <button type="button" className="pdel" aria-label="Quitar foto" onClick={() => removePhoto(def.m, p)}>×</button>
+                    </div>
+                  ))}
+                  <label className="pcam">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+                    <span>{photoBusy === def.m ? "Guardando…" : (it.photos || []).length ? "Otra foto" : "Foto de hoy"}</span>
+                    <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => { addPhoto(def.m, e.target.files?.[0]); e.target.value = ""; }} />
+                  </label>
+                </div>
                 <button type="button" className="linkbtn" onClick={() => setSheet(def.m)}>¿Te molestó algo? Registrar molestia</button>
               </>
             )}
@@ -865,6 +939,24 @@ function Logbook({ uid }: { uid: string }) {
                 </button>
                 {isOpen && <div className="hist">
                   {odd && <span className="warnline">Este registro es mucho mayor de lo habitual. Revisa que la unidad (lb o kg) esté bien elegida en la máquina.</span>}
+                  {(() => {
+                    const gal = keys.slice().reverse().flatMap((k) => (sessions[k].items?.[m]?.photos || []).map((ph: string) => ({ k, ph, mt: metricOf(sessions[k].items[m]) as any })));
+                    if (!gal.length) return null;
+                    return (
+                      <div className="gallery" aria-label={`Fotos de ${machines[m].name}`}>
+                        {gal.slice(0, 24).map(({ k, ph, mt }) => {
+                          const cap = `${shortDate(k)}${mt?.u === "kg" ? " · " + fmtW(mt.v, mt.lb, unit) : ""}`;
+                          return (
+                            <button type="button" key={ph} className="gitem" onClick={() => setViewer({ src: photoSrc(ph), caption: `${machines[m].name} · ${cap}` })}>
+                              {photoSrc(ph) ? <img src={photoSrc(ph)} alt="" loading="lazy" /> : <span className="ph" />}
+                              <span className="gcap num">{shortDate(k)}</span>
+                              {mt?.u === "kg" && <span className="gcap num">{fmtW(mt.v, mt.lb, unit)}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   {pts.slice().reverse().slice(0, 15).map((p: any) => (
                     <div key={p.k}><span>{shortDate(p.k)}</span><span className="num">{p.u === "kg" ? fmtW(p.v, p.lb, unit) + " × " + p.reps.join(", ") : fmtNum(p.v) + " " + p.u}{p.it.feel ? " · " + feelName(p.it.feel) : ""}{p.it.note ? " · " + p.it.note : ""}</span></div>
                   ))}</div>}
@@ -1018,6 +1110,12 @@ function Logbook({ uid }: { uid: string }) {
       )}
       <div className="dock">
         {work && <WorkBar work={work} onFinish={finishWork} onCancel={() => setWork(null)} onPause={pauseWork} onPlus={plusWork} />}
+        {viewer && (
+          <div className="viewer" role="dialog" aria-modal="true" aria-label="Foto" onClick={() => setViewer(null)}>
+            {viewer.src && <img src={viewer.src} alt={viewer.caption} />}
+            <div className="vbar"><span>{viewer.caption}</span><button type="button" onClick={() => setViewer(null)}>Cerrar</button></div>
+          </div>
+        )}
         {!work && rest && <RestBar rest={rest} onClose={closeRest} onPlus={() => setRest({ ...rest, end: Math.max(rest.end, Date.now()) + 30000, total: rest.total + 30 })} />}
         <nav className="tabs" aria-label="Secciones">
           {([["hoy", "Hoy", <path key="a" d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />],

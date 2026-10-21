@@ -62,12 +62,18 @@ export function wText(kg: number | null, lb: number | null, unit: Unit) {
   return `${fmtNum(kg ?? toKg(lb))} kg`;
 }
 
-export type SetRow = { date: string; machine_slug: string; unit: string; kg: number | null; lb: number | null; reps: number | null; secs: number | null; done: boolean; feel: string | null };
+export type SetRow = { date: string; machine_slug: string; unit: string; kg: number | null; lb: number | null; reps: number | null; secs: number | null; done: boolean; feel: string | null; tandas?: number | null };
 
 /** Mejor serie (más kg) de un ejercicio en una fecha, con todas sus repeticiones. */
 export function bestOf(rows: SetRow[]) {
   const done = rows.filter((r) => r.done);
   if (!done.length) return null;
   const top = done.reduce((a, r) => (Number(r.kg || 0) > Number(a.kg || 0) ? r : a), done[0]);
-  return { kg: top.kg != null ? Number(top.kg) : null, lb: top.lb != null ? Number(top.lb) : null, unit: (top.unit === "lb" ? "lb" : "kg") as Unit, reps: done.map((r) => r.reps ?? 0), feel: top.feel };
+  return { kg: top.kg != null ? Number(top.kg) : null, lb: top.lb != null ? Number(top.lb) : null, unit: (top.unit === "lb" ? "lb" : "kg") as Unit, reps: done.map((r) => r.reps ?? 0), tandas: done.map((r) => Number(r.tandas) || 1), feel: top.feel };
 }
+
+/** Repeticiones de un día para el texto del entrenador: "10×3, 15×3, 10" (×3 = tres tandas con ese peso). */
+export function repsLine(b: { reps: number[]; tandas?: number[] }) {
+  return b.reps.map((r, i) => ((b.tandas?.[i] || 1) > 1 ? `${r}×${b.tandas![i]}` : `${r}`)).join(", ");
+}
+export const TANDAS_NOTE = `Formato de repeticiones: "10×3" significa 3 tandas de 10 repeticiones con el mismo peso dentro de una misma serie (entrena en pirámide). Las repeticiones que se comparan con el rango son las de cada tanda.`;

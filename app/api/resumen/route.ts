@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { askClaude, bestOf, CoachError, MODEL_FAST, profileLines, userDb, wText, type SetRow } from "@/lib/coach";
+import { askClaude, bestOf, CoachError, MODEL_FAST, profileLines, repsLine, TANDAS_NOTE, userDb, wText, type SetRow } from "@/lib/coach";
 import { feelName } from "@/lib/logic";
 
 // Comentario corto al terminar la sesión: un logro concreto y una propuesta para la próxima vez.
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     db.from("profiles").select("*").maybeSingle(),
     db.from("machines").select("slug,name,unit"),
     db.from("routines").select("slug,name,items"),
-    db.from("set_log").select("date,machine_slug,unit,kg,lb,reps,secs,done,feel").lte("date", date).eq("done", true).order("date", { ascending: false }).limit(400),
+    db.from("set_log").select("date,machine_slug,unit,kg,lb,reps,secs,done,feel,tandas").lte("date", date).eq("done", true).order("date", { ascending: false }).limit(400),
     db.from("discomforts").select("area,side,intensity,machine_slug").eq("resolved", false).limit(5),
   ]);
   if (!sess) return NextResponse.json({ error: "No encontré la sesión de hoy guardada. Revisa la conexión e intenta de nuevo." }, { status: 404 });
@@ -46,11 +46,11 @@ export async function POST(req: Request) {
     const isHold = all.some((r) => r.machine_slug === m && r.date === date && r.secs != null);
     const def = routine?.items?.find((d: any) => d.m === m);
     const top = def?.reps?.[1];
-    const cur = isHold ? "series en segundos" : today.kg ? `${wText(today.kg, today.lb, u)} × ${today.reps.join(", ")} reps` : `${today.reps.join(", ")} reps`;
+    const cur = isHold ? "series en segundos" : today.kg ? `${wText(today.kg, today.lb, u)} × ${repsLine(today)} reps` : `${repsLine(today)} reps`;
     let cmp = "primera vez que lo registra";
     if (prev && !isHold) {
       const d = Number(today.kg || 0) - Number(prev.kg || 0);
-      cmp = `la vez anterior (${prevDate}): ${prev.kg ? wText(prev.kg, prev.lb, u) : ""} × ${prev.reps.join(", ")}` + (d > 0.05 ? " → subió de peso" : d < -0.05 ? " → bajó de peso" : " → mismo peso");
+      cmp = `la vez anterior (${prevDate}): ${prev.kg ? wText(prev.kg, prev.lb, u) : ""} × ${repsLine(prev)}` + (d > 0.05 ? " → subió de peso" : d < -0.05 ? " → bajó de peso" : " → mismo peso");
     }
     const feel = it.feel ? `, sensación: ${feelName(it.feel)}` : "";
     const topHit = top && !isHold && today.reps.length && today.reps.every((r) => r >= top) ? `, completó el tope de ${top} reps en todas las series` : "";
@@ -64,6 +64,7 @@ export async function POST(req: Request) {
     profileLines((p || {}) as any),
     `RUTINA DE HOY: ${routine?.name || sess.routine_slug || "sin rutina"}${mins ? `, duración aproximada ${mins} min` : ""}.`,
     (dis || []).length ? `MOLESTIAS ACTIVAS: ${(dis || []).map((d: any) => `${d.area}${d.side ? " " + d.side : ""} ${d.intensity}/10${d.machine_slug ? ` (en ${name(d.machine_slug)})` : ""}`).join("; ")}.` : "",
+    TANDAS_NOTE,
     `DATOS DE LA SESIÓN:`,
     ...lines,
   ].filter(Boolean).join("\n");
