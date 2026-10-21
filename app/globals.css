@@ -496,3 +496,20 @@ img{max-width:100%}
 .aims.fix li::before{border-radius:2px;transform:rotate(45deg);width:8px;height:8px;left:5px}
 .bc-links{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
 .aims h3 span{font-weight:600;text-transform:none;letter-spacing:0}
+
+/* tarjetas para moverse entre bloques */
+.peeks{display:grid;gap:8px;margin-top:14px}
+.peek{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:10px 12px;border-radius:14px;background:var(--surface);border:1px solid var(--line);text-align:left;color:var(--ink)}
+.peek:active{transform:scale(.99)}
+.pk-arrow{flex:none;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.6rem;line-height:1;font-weight:600;background:var(--sunk);color:var(--ink)}
+.pk-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.pk-eye{font-size:.76rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.pk-text b{font-size:1.02rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk-tag{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;color:var(--muted)}
+.pk-tag i{width:8px;height:8px;border-radius:50%;background:var(--line-strong)}
+.peek.anterior .pk-tag i{background:var(--good)}
+.peek.actual .pk-tag i{background:var(--accent)}
+.peek.pk-cur{background:var(--plate);border-color:var(--plate);color:var(--plate-ink)}
+.peek.pk-cur .pk-eye{color:var(--plate-num)}
+.peek.pk-cur .pk-tag{color:var(--plate-sub)}
+.peek.pk-cur .pk-arrow{background:var(--accent);color:var(--accent-ink)}

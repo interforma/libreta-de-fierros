@@ -1188,14 +1188,31 @@ function Logbook({ uid }: { uid: string }) {
                   <ul>{tips.map(([m, t]) => <li key={m}><b>{machines[m]?.name || m}:</b> {t}</li>)}</ul>
                 </section>
               )}
-              {blocks.length > 1 && (
-                <div className="bc-links">
-                  {i > 0 ? <button type="button" className="linkbtn" onClick={() => go(-1)}>‹ {blocks[i - 1].name}</button> : <span />}
-                  {curBlock && sel.id !== curBlock.id
-                    ? <button type="button" className="linkbtn" onClick={() => { setPlanBlock(curBlock.id); setPlanOpen(null); window.scrollTo(0, 0); }}>Volver al actual</button>
-                    : i < blocks.length - 1 ? <button type="button" className="linkbtn" onClick={() => go(1)}>{blocks[i + 1].name} ›</button> : <span />}
-                </div>
-              )}
+              {blocks.length > 1 && (() => {
+                // Tarjetas para moverse entre bloques: dicen adónde vas (objetivo y estado) antes de tocar.
+                const peek = (b: Block, dir: "prev" | "next" | "cur") => {
+                  const bs = status(b), ft = focusParts(b.focus).title;
+                  const tag = bs === "actual" ? `semana ${Math.min(weekOf(b, todayKey), b.weeks)} de ${b.weeks}` : bs === "anterior" ? "terminado" : `empieza el ${shortDate(b.start_date)}`;
+                  const eye = dir === "cur" ? "Volver al bloque actual" : dir === "prev" ? "Bloque anterior" : bs === "actual" ? "Bloque actual" : "Bloque siguiente";
+                  const onClick = () => { setPlanBlock(b.id); setPlanOpen(null); window.scrollTo(0, 0); };
+                  return (
+                    <button type="button" key={dir} className={`peek pk-${dir} ${bs}`} onClick={onClick}>
+                      {dir === "prev" && <span className="pk-arrow" aria-hidden="true">‹</span>}
+                      <span className="pk-text">
+                        <span className="pk-eye">{eye}</span>
+                        <b>{b.name}{ft ? ` · ${ft}` : ""}</b>
+                        <span className="pk-tag num"><i />{tag}</span>
+                      </span>
+                      {dir !== "prev" && <span className="pk-arrow" aria-hidden="true">›</span>}
+                    </button>
+                  );
+                };
+                const out = [];
+                if (curBlock && sel.id !== curBlock.id) out.push(peek(curBlock, "cur"));
+                if (i > 0 && blocks[i - 1].id !== curBlock?.id) out.push(peek(blocks[i - 1], "prev"));
+                if (i < blocks.length - 1 && blocks[i + 1].id !== curBlock?.id) out.push(peek(blocks[i + 1], "next"));
+                return out.length ? <div className="peeks">{out}</div> : null;
+              })()}
             </>
           );
         })()}
