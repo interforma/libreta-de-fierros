@@ -431,3 +431,33 @@ img{max-width:100%}
 @keyframes p-look{0%,22%{transform:translate(0,0)}28%,42%{transform:translate(8px,-2px)}48%,60%{transform:translate(-7px,0)}66%,76%{transform:translate(0,-6px)}82%,100%{transform:translate(0,0)}}
 .donehero{border-width:1px}
 .donehero .meta{margin:0 auto;max-width:34ch}
+
+/* cierre del día, versión destacada */
+.donehero.cur{position:relative;overflow:hidden;background:var(--plate);color:var(--plate-ink);border:0}
+.donehero.cur h2{color:var(--plate-ink);font-size:1.8rem}
+.donehero.cur .meta{color:var(--plate-sub)}
+.donehero.cur .next{background:color-mix(in srgb,var(--plate-ink) 8%,transparent);border-color:color-mix(in srgb,var(--plate-ink) 16%,transparent)}
+.donehero.cur .next .eyebrow{color:var(--plate-num)}
+.donehero.cur .next b{color:var(--plate-ink)}
+.donehero .review{margin-top:12px;width:100%;min-height:52px;border-radius:26px;background:transparent;border:1.5px solid color-mix(in srgb,var(--plate-ink) 40%,transparent);color:var(--plate-ink);font-weight:700;font-size:1rem}
+.confetti{position:absolute;inset:0;pointer-events:none}
+.confetti i{position:absolute;width:10px;height:10px;border-radius:2px;background:var(--accent);opacity:.85;animation:cf-in .6s cubic-bezier(.16,1,.3,1) both}
+.confetti i:nth-child(1){left:18%;top:16%;transform:rotate(18deg)}
+.confetti i:nth-child(2){left:78%;top:12%;border-radius:50%;background:#CCE2ED}
+.confetti i:nth-child(3){left:84%;top:30%;width:7px;height:7px;background:var(--good)}
+.confetti i:nth-child(4){left:12%;top:34%;border-radius:50%;width:7px;height:7px;background:#CCE2ED}
+.confetti i:nth-child(5){left:28%;top:8%;width:6px;height:6px;border-radius:50%}
+.confetti i:nth-child(6){left:68%;top:26%;transform:rotate(-24deg);background:var(--good)}
+@keyframes cf-in{from{opacity:0;translate:0 10px}to{translate:0 0}}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* Punto vivo: un gesto cada 2 s */
+.pv{display:inline-block;position:relative}
+.pv.g-hop{animation:g-hop .6s cubic-bezier(.16,1,.3,1)}
+.pv.g-look-l .p-look{animation:g-look-l 1.6s ease-in-out both!important}
+.pv.g-look-r .p-look{animation:g-look-r 1.6s ease-in-out both!important}
+.pv.g-blink .p-blink{animation:g-blink .5s linear both!important}
+@keyframes g-hop{0%{transform:translateY(0)}35%{transform:translateY(-12px) scale(1.04,.96)}70%{transform:translateY(0) scale(.98,1.02)}100%{transform:none}}
+@keyframes g-look-l{0%,100%{transform:translate(0,0)}25%,75%{transform:translate(-9px,-1px)}}
+@keyframes g-look-r{0%,100%{transform:translate(0,0)}25%,75%{transform:translate(9px,-3px)}}
+@keyframes g-blink{0%,100%{transform:scaleY(1)}40%{transform:scaleY(.08)}70%{transform:scaleY(1)}}
+@media (prefers-reduced-motion: reduce){.pv,.pv *{animation:none!important}.confetti i{animation:none}}

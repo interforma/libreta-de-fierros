@@ -191,7 +191,8 @@ function Logbook({ uid }: { uid: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [progOpen, setProgOpen] = useState<string | null>(null);
-  const [review, setReview] = useState<string | null>(null); // día en que se pidió ver la sesión ya terminada
+  const [review, setReview] = useState<string | null>(null);
+  const [coachFull, setCoachFull] = useState(false); // día en que se pidió ver la sesión ya terminada
   const [planOpen, setPlanOpen] = useState<number | null>(null);
   const [sync, setSync] = useState<Sync>("busy");
   const [loaded, setLoaded] = useState(false);
@@ -837,7 +838,10 @@ function Logbook({ uid }: { uid: string }) {
               </div>
             );
           })()}
-          {meta.__resumen?.text ? <p>{meta.__resumen.text}</p>
+          {meta.__resumen?.text ? (heroMode ? <>
+              <p className={coachFull ? "" : "clamp2"}>{meta.__resumen.text}</p>
+              <button type="button" className="linkbtn" aria-expanded={coachFull} onClick={() => setCoachFull(!coachFull)}>{coachFull ? "Ver menos" : "Leer todo"}</button>
+            </> : <p>{meta.__resumen.text}</p>)
             : coach.busy ? <p className="meta">Preparando un comentario sobre tu sesión…</p>
             : <>
                 {coach.err && <p className="msg">{coach.err}</p>}
@@ -863,8 +867,9 @@ function Logbook({ uid }: { uid: string }) {
       return (
         <>
           {head}
-          <section className="card donehero" aria-live="polite">
-            <PuntoVivo first="celebra" size={84} label="Sesión completa" />
+          <section className="card donehero cur" aria-live="polite">
+            <span className="confetti" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
+            <PuntoVivo first="celebra" size={92} label="Sesión completa" lively />
             <h2>Listo por hoy</h2>
             <p className="meta num">{r.name}{mins && mins < 300 ? ` · ${mins} min` : ""} · {total} de {total} hechos</p>
             <div className="next">
@@ -872,9 +877,9 @@ function Logbook({ uid }: { uid: string }) {
               <b>{nr ? nr.name : "Descanso"}</b>
               <span className="meta">{nr ? (nr.duration_min ? `unos ${nr.duration_min} min` : "") : "Recuperación"}</span>
             </div>
+            <button type="button" className="review" onClick={() => setReview(todayKey)}>Ver o corregir la sesión de hoy</button>
           </section>
           {close}
-          <button type="button" className="big ghost" style={{ marginTop: 14 }} onClick={() => setReview(todayKey)}>Ver o corregir la sesión de hoy</button>
         </>
       );
     }
@@ -975,7 +980,7 @@ function Logbook({ uid }: { uid: string }) {
           return (
             <section className="card hero">
               <div className="ride" style={{ ["--x" as any]: `${((pos + 0.5) / 7) * 100}%` }}>
-                <span className="rider"><PuntoVivo key={`${expr}-${pos}`} first={expr} size={56} label={head} after={2400} /></span>
+                <span className="rider"><PuntoVivo key={`${expr}-${pos}`} first={expr} size={56} label={head} after={2400} lively /></span>
               </div>
               <div className="week" role="img" aria-label={`Esta semana: ${wk} de ${planned} sesiones hechas`}>
                 {week.map((w) => <i key={w.k} className={sessionDone(w.k) ? "ok" : w.k === todayKey ? "today" : !hasRoutine(w.di) ? "rest" : ""} />)}
