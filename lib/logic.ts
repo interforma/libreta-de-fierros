@@ -179,3 +179,17 @@ export function metricOf(it?: ItemLog) {
   if (it.done) return { v: it.min || 0, u: "min" as const };
   return null;
 }
+
+/** "Fuerza base: grandes a 8–10, pequeños a 12–15. Semana 4 de descarga." → título y puntos cortos.
+ *  La descarga se omite porque ya se ve en la barra de semanas. */
+export function focusParts(focus: string | null | undefined): { title: string; points: string[] } {
+  const f = (focus || "").trim();
+  if (!f) return { title: "", points: [] };
+  const i = f.indexOf(":");
+  const title = i > 0 && i < 40 ? f.slice(0, i).trim() : "";
+  const body = i > 0 && i < 40 ? f.slice(i + 1) : f;
+  const points = body.split(/\.\s+|\.$/).map((x) => x.trim()).filter((x) => x && !/descarga/i.test(x))
+    .flatMap((x) => x.split(/,\s*/)).map((x) => x.trim()).filter(Boolean)
+    .map((x) => x[0].toUpperCase() + x.slice(1));
+  return { title, points: points.slice(0, 4) };
+}

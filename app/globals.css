@@ -472,3 +472,27 @@ img{max-width:100%}
 @media (prefers-reduced-motion: reduce){.donehero .bubble{animation:none}}
 .donehero .bubble{margin-bottom:0}
 .donehero .pv{margin:-18px 0 -14px}
+
+/* Punto que se puede tocar */
+.pv-btn{display:inline-flex;padding:0;border-radius:50%;background:transparent;-webkit-tap-highlight-color:transparent}
+.pv-btn:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+.pv-tap{display:inline-block;animation:pv-tap .55s cubic-bezier(.16,1,.3,1)}
+@keyframes pv-tap{0%{transform:scale(1)}30%{transform:translateY(-16px) scale(1.08,.94)}65%{transform:translateY(0) scale(.96,1.04)}100%{transform:none}}
+@media (prefers-reduced-motion: reduce){.pv-tap{animation:none}}
+
+/* Plan simplificado */
+.blockcard .bc-eye{display:block}
+.blockcard .bc-name{margin-top:6px}
+.blockcard .bc-weeks{margin-top:16px}
+.bc-next{margin:14px 0 4px;font-size:1rem;line-height:1.45;font-weight:600}
+.blockcard.cur .bc-next{color:var(--plate-ink)}
+.aims{margin-top:14px;padding:4px 2px 0}
+.aims h3{margin:0 0 8px;font-size:.82rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.aims ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.aims li{position:relative;padding-left:26px;font-size:1.02rem;line-height:1.45}
+.aims li::before{content:"";position:absolute;left:4px;top:.5em;width:10px;height:10px;border-radius:50%;background:var(--accent)}
+.aims.fix{margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent-line)}
+.aims.fix h3{color:var(--accent-text)}
+.aims.fix li::before{border-radius:2px;transform:rotate(45deg);width:8px;height:8px;left:5px}
+.bc-links{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+.aims h3 span{font-weight:600;text-transform:none;letter-spacing:0}

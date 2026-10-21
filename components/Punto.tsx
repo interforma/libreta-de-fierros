@@ -46,16 +46,22 @@ function decor(expr: PuntoExpr) {
 
 /** Punto que reacciona y después queda en reposo vivo: entra con `first` (por ejemplo, celebra)
  *  y a los `after` ms pasa a "atento", respirando, parpadeando y mirando a los lados.
- *  Con `lively`, cada 2 s hace un gesto distinto (mira, parpadea, salta) y cada tanto vuelve a celebrar. */
-export function PuntoVivo({ first = "atento", size = 56, label, after = 2200, lively = false }: { first?: PuntoExpr; size?: number; label?: string; after?: number; lively?: boolean }) {
+ *  Con `lively`, cada 2 s hace un gesto distinto (mira, parpadea, salta) y cada tanto vuelve a celebrar.
+ *  Con `onTap`, se puede tocar: salta, celebra un instante y avisa (para el sonido).
+ *  `onAppear` se llama una vez al aparecer. */
+export function PuntoVivo({ first = "atento", size = 56, label, after = 2200, lively = false, onTap, onAppear }: {
+  first?: PuntoExpr; size?: number; label?: string; after?: number; lively?: boolean; onTap?: () => void; onAppear?: () => void;
+}) {
   const [e, setE] = useState<PuntoExpr>(first);
   const [act, setAct] = useState(0);
+  const [taps, setTaps] = useState(0);
   useEffect(() => {
     setE(first);
     if (first === "atento") return;
     const t = setTimeout(() => setE("atento"), after);
     return () => clearTimeout(t);
   }, [first, after]);
+  useEffect(() => { onAppear?.(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!lively || (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches)) return;
     let n = 0, back: ReturnType<typeof setTimeout> | undefined;
@@ -66,6 +72,18 @@ export function PuntoVivo({ first = "atento", size = 56, label, after = 2200, li
     }, 2000);
     return () => { clearInterval(iv); if (back) clearTimeout(back); };
   }, [lively, first]);
+  useEffect(() => {
+    if (!taps) return;
+    setE("celebra");
+    const t = setTimeout(() => setE("atento"), 1000);
+    return () => clearTimeout(t);
+  }, [taps]);
   const gesture = lively ? ["g-look-l", "g-blink", "g-look-r", "g-hop"][act] : "";
-  return <span className={`pv ${gesture}`}><Punto expr={e} size={size} alive={e === "atento"} label={label} /></span>;
+  const body = <span className={`pv ${gesture}`}><Punto expr={e} size={size} alive={e === "atento"} label={onTap ? undefined : label} /></span>;
+  if (!onTap) return body;
+  return (
+    <button type="button" className="pv-btn" aria-label={label ? `${label}: tócalo` : "Tocar a Punto"} onClick={() => { setTaps((n) => n + 1); onTap(); }}>
+      <span key={taps} className={taps ? "pv-tap" : ""}>{body}</span>
+    </button>
+  );
 }

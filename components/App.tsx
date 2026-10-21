@@ -8,10 +8,11 @@ import { CheckupList, DiscomfortList, DiscomfortSheet, ProfileCard, type Checkup
 import {
   DAYS, MONTHS, FEELS, FOOD, feelName, fmtNum, fmtW, freshItem, itemDone, keyOf, lastFor, metricOf, mmss,
   parseKey, parseNum, routineForDay, setW, shortDate, targetText, toKg, toLb, unitOf, wIn,
-  activeBlock, weekOf, blockEnd, isDeload, routinesOf, repsOf,
+  activeBlock, weekOf, blockEnd, isDeload, routinesOf, repsOf, focusParts,
   type Block, type ItemDef, type ItemLog, type Machine, type Routine, type Session, type Unit,
 } from "@/lib/logic";
 import { getPrefs, savePrefs, SIZES, THEMES, type Prefs } from "@/lib/prefs";
+import { chimeOncePerDay, pop, unlockPuntoAudio } from "@/lib/puntoSound";
 import { callCoach, shrinkPhoto } from "@/lib/coachClient";
 import { flushPhotos, progressPath, queueAll, queueDel, queuePut, uploadOne } from "@/lib/progressPhotos";
 import { GuidePanel, MachineCatalog, PhotoSheet } from "@/components/Maquinas";
@@ -153,7 +154,7 @@ function RestBar({ rest, onPlus, onClose }: { rest: Rest; onPlus: () => void; on
   );
 }
 let actx: AudioContext | null = null;
-function unlockAudio() { try { actx = actx || new (window.AudioContext || (window as any).webkitAudioContext)(); actx.resume?.(); } catch {} }
+function unlockAudio() { unlockPuntoAudio(); try { actx = actx || new (window.AudioContext || (window as any).webkitAudioContext)(); actx.resume?.(); } catch {} }
 function beep() {
   const pr = getPrefs();
   try {
@@ -262,6 +263,13 @@ function Logbook({ uid }: { uid: string }) {
     supabase.storage.from("machine-photos").remove([path]).catch(() => {});
   }
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => { const n = { ...prefs, [k]: v }; setPrefsState(n); savePrefs(n); };
+
+  /* el audio se habilita con el primer toque, para que Punto pueda sonar al terminar la sesión */
+  useEffect(() => {
+    const on = () => unlockAudio();
+    document.addEventListener("pointerdown", on);
+    return () => document.removeEventListener("pointerdown", on);
+  }, []);
 
   /* ---- carga inicial ---- */
   useEffect(() => {
@@ -882,7 +890,7 @@ function Logbook({ uid }: { uid: string }) {
                     <span>{say}</span>
                     {more && <small>{coachFull ? "Ver menos" : "Seguir leyendo"}</small>}
                   </button>
-                  <PuntoVivo first={coach.busy ? "piensa" : coach.err ? "uy" : "celebra"} size={160} label="Tu entrenador" lively={!coach.busy} />
+                  <PuntoVivo first={coach.busy ? "piensa" : coach.err ? "uy" : "celebra"} size={160} label="Punto" lively={!coach.busy} onTap={() => { unlockAudio(); pop(); }} onAppear={() => chimeOncePerDay(todayKey)} />
                 </>
               );
             })()}
@@ -995,7 +1003,7 @@ function Logbook({ uid }: { uid: string }) {
           return (
             <section className="card hero">
               <div className="ride" style={{ ["--x" as any]: `${((pos + 0.5) / 7) * 100}%` }}>
-                <span className="rider"><PuntoVivo key={`${expr}-${pos}`} first={expr} size={56} label={head} after={2400} lively /></span>
+                <span className="rider"><PuntoVivo key={`${expr}-${pos}`} first={expr} size={56} label={head} after={2400} lively onTap={() => { unlockAudio(); pop(); }} /></span>
               </div>
               <div className="week" role="img" aria-label={`Esta semana: ${wk} de ${planned} sesiones hechas`}>
                 {week.map((w) => <i key={w.k} className={sessionDone(w.k) ? "ok" : w.k === todayKey ? "today" : !hasRoutine(w.di) ? "rest" : ""} />)}
@@ -1130,63 +1138,67 @@ function Logbook({ uid }: { uid: string }) {
       <>
         {Header({ title: "Plan", eyebrow: "Tu entrenamiento" })}
         {sel && (() => {
-          // Tarjeta del bloque: dónde estoy (semana N de M), cómo va la semana y navegación entre bloques que no crece.
+          // Plan = hacia dónde voy: objetivo del bloque, en qué semana estoy, qué viene y qué corregir.
+          // Lo que ya se hizo vive en Progreso; aquí no se repite.
           const i = blocks.findIndex((b) => b.id === sel.id);
-          const go = (d: number) => { const b = blocks[i + d]; if (b) { setPlanBlock(b.id); setPlanOpen(null); } };
-          const st = status(sel), isCur = st === "actual";
-          const w = isCur ? Math.min(weekOf(sel, todayKey), sel.weeks) : st === "anterior" ? sel.weeks + 1 : 0;
-          // sesiones de la semana en curso del bloque
-          let wkDone = 0, wkPlan = 0;
-          if (isCur) {
-            const days = routinesOf(routines, sel.id).flatMap((r) => r.weekdays);
-            const start = parseKey(sel.start_date); start.setDate(start.getDate() + (w - 1) * 7);
-            for (let d = 0; d < 7; d++) {
-              const x = new Date(start); x.setDate(start.getDate() + d);
-              if (days.includes(x.getDay())) wkPlan++;
-              if (sessionDone(keyOf(x))) wkDone++;
-            }
-          }
-          const okMark = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>;
-          const eyebrow = isCur ? "Bloque actual" : st === "anterior" ? "Bloque anterior" : "Próximo bloque";
-          const side = isCur ? `Semana ${w} de ${sel.weeks}` : st === "anterior" ? "Terminado" : `Empieza el ${shortDate(sel.start_date)}`;
+          const go = (d: number) => { const b = blocks[i + d]; if (b) { setPlanBlock(b.id); setPlanOpen(null); window.scrollTo(0, 0); } };
+          const st = status(sel), isCur = st === "actual", isFin = st === "anterior";
+          const w = isCur ? Math.min(weekOf(sel, todayKey), sel.weeks) : isFin ? sel.weeks + 1 : 0;
+          const { title, points } = focusParts(sel.focus);
+          const weekStart = (n: number) => { const x = parseKey(sel.start_date); x.setDate(x.getDate() + (n - 1) * 7); return shortDate(keyOf(x)); };
+          const dl = sel.deload_week;
+          const next = isFin ? `Terminó el ${shortDate(blockEnd(sel))}.`
+            : !isCur ? `Empieza el ${shortDate(sel.start_date)}.`
+            : dl && w === dl ? "Semana de descarga: una serie menos y cerca del 60 % del peso. Toca recuperar."
+            : dl && w + 1 === dl ? `La próxima semana es de descarga, desde el ${weekStart(dl)}.`
+            : dl && w < dl ? `La descarga llega la semana del ${weekStart(dl)}.`
+            : w >= sel.weeks ? `Última semana: el ${shortDate(blockEnd(sel))} cierra el bloque y viene el balance.`
+            : `Termina el ${shortDate(blockEnd(sel))}.`;
+          // a corregir: las notas del balance del bloque anterior, solo para el bloque actual
+          const prevB = isCur && i > 0 ? blocks[i - 1] : undefined;
+          const tips = Object.entries(prevB?.balance?.tips || (prevB ? balances[prevB.id]?.tips : undefined) || {}).slice(0, 3);
           return (
-            <section className={`blockcard ${isCur ? "cur" : st === "anterior" ? "fin" : ""}`} aria-label={`${sel.name}, ${eyebrow.toLowerCase()}`}>
-              <div className="bc-top">
-                <span className="bc-eye">{eyebrow}</span>
-                {st === "anterior" ? <span className="badge ok bc-done">{okMark}Terminado</span> : <span className="bc-side num">{side}</span>}
-              </div>
-              <h2 className="bc-name">{sel.name}</h2>
-              <div className="bc-dates num">{shortDate(sel.start_date)} → {shortDate(blockEnd(sel))}</div>
-              <div className="bc-weeks" role="img" aria-label={isCur ? `Semana ${w} de ${sel.weeks}` : eyebrow}>
-                {Array.from({ length: sel.weeks }, (_, k) => {
-                  const n = k + 1, cls = n < w ? "past" : n === w ? "now" : "";
-                  return (
-                    <div key={n} className={`bc-w ${cls} ${sel.deload_week === n ? "deload" : ""}`}>
-                      <i />
-                      <span>{sel.weeks <= 6 || n === 1 || n === sel.weeks || n === w || sel.deload_week === n ? (sel.deload_week === n ? "Descarga" : `S${n}`) : "\u00a0"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              {isCur && wkPlan > 0 && <div className="bc-wk num"><b>{wkDone} de {wkPlan}</b> sesiones esta semana</div>}
+            <>
+              <section className={`blockcard ${isCur ? "cur" : isFin ? "fin" : ""}`} aria-label={`${sel.name}: ${title || "plan"}`}>
+                <span className="bc-eye num">{sel.name} · {isCur ? `semana ${w} de ${sel.weeks}` : isFin ? "terminado" : "próximo"}</span>
+                <h2 className="bc-name">{title || sel.name}</h2>
+                <div className="bc-weeks" role="img" aria-label={isCur ? `Semana ${w} de ${sel.weeks}` : st}>
+                  {Array.from({ length: sel.weeks }, (_, k) => {
+                    const n = k + 1, cls = n < w ? "past" : n === w ? "now" : "";
+                    const lab = sel.weeks <= 6 || n === 1 || n === sel.weeks || n === w || dl === n;
+                    return (
+                      <div key={n} className={`bc-w ${cls} ${dl === n ? "deload" : ""}`}>
+                        <i />
+                        <span>{lab ? (dl === n ? "Descarga" : `S${n}`) : "\u00a0"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="bc-next">{next}</p>
+              </section>
+              {points.length > 0 && (
+                <section className="aims">
+                  <h3>Qué buscamos</h3>
+                  <ul>{points.map((p) => <li key={p}>{p}</li>)}</ul>
+                </section>
+              )}
+              {tips.length > 0 && (
+                <section className="aims fix">
+                  <h3>A corregir <span>· según el balance</span></h3>
+                  <ul>{tips.map(([m, t]) => <li key={m}><b>{machines[m]?.name || m}:</b> {t}</li>)}</ul>
+                </section>
+              )}
               {blocks.length > 1 && (
-                <div className="bc-nav">
-                  <button type="button" disabled={i <= 0} aria-label="Bloque anterior" onClick={() => go(-1)}>‹</button>
-                  <div className="bc-dots" aria-label={`Bloque ${i + 1} de ${blocks.length}`}>
-                    {blocks.length <= 8
-                      ? blocks.map((b, k) => <i key={b.id} className={`${k === i ? "on" : ""} ${b.id === curBlock?.id ? "cur" : ""}`} />)
-                      : <span className="num">{i + 1} de {blocks.length}</span>}
-                  </div>
-                  <button type="button" disabled={i >= blocks.length - 1} aria-label="Bloque siguiente" onClick={() => go(1)}>›</button>
+                <div className="bc-links">
+                  {i > 0 ? <button type="button" className="linkbtn" onClick={() => go(-1)}>‹ {blocks[i - 1].name}</button> : <span />}
+                  {curBlock && sel.id !== curBlock.id
+                    ? <button type="button" className="linkbtn" onClick={() => { setPlanBlock(curBlock.id); setPlanOpen(null); window.scrollTo(0, 0); }}>Volver al actual</button>
+                    : i < blocks.length - 1 ? <button type="button" className="linkbtn" onClick={() => go(1)}>{blocks[i + 1].name} ›</button> : <span />}
                 </div>
               )}
-            </section>
+            </>
           );
         })()}
-        {curBlock && sel && sel.id !== curBlock.id && (
-          <button type="button" className="linkbtn" onClick={() => { setPlanBlock(curBlock.id); setPlanOpen(null); }}>Volver al bloque actual</button>
-        )}
-        {sel?.focus && <div className="blockinfo"><p>{sel.focus}</p></div>}
         {sel && sel.start_date <= todayKey && (weekOf(sel, todayKey) >= sel.weeks || blockEnd(sel) < todayKey || balances[sel.id]) && (
           <section className="card closecard" style={{ marginTop: 14 }}>
             <div className="eyebrow">Balance de {sel.name}</div>
