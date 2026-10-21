@@ -1040,14 +1040,23 @@ function Logbook({ uid }: { uid: string }) {
     return (
       <>
         {Header({ title: "Plan", eyebrow: sel ? `${sel.name} · ${status(sel)}` : "Semana tipo" })}
-        {blocks.length > 1 && (
-          <div className="picker blocks" role="group" aria-label="Bloques">
-            {blocks.map((b) => (
-              <button key={b.id} type="button" className={b.id === sel?.id ? "on" : ""} aria-pressed={b.id === sel?.id} onClick={() => { setPlanBlock(b.id); setPlanOpen(null); }}>
-                {b.name}<span>{status(b)} · desde {shortDate(b.start_date)}</span>
-              </button>
-            ))}
-          </div>
+        {blocks.length > 1 && sel && (() => {
+          // Un solo bloque a la vista con flechas: no crece aunque se acumulen bloques.
+          const i = blocks.findIndex((b) => b.id === sel.id);
+          const go = (d: number) => { const b = blocks[i + d]; if (b) { setPlanBlock(b.id); setPlanOpen(null); } };
+          return (
+            <div className="blocknav" role="group" aria-label="Bloques">
+              <button type="button" disabled={i <= 0} aria-label="Bloque anterior" onClick={() => go(-1)}>‹</button>
+              <div className="bn-mid" aria-live="polite">
+                <b>{sel.name}</b>
+                <span className="num">{status(sel)} · {i + 1} de {blocks.length}</span>
+              </div>
+              <button type="button" disabled={i >= blocks.length - 1} aria-label="Bloque siguiente" onClick={() => go(1)}>›</button>
+            </div>
+          );
+        })()}
+        {curBlock && sel && sel.id !== curBlock.id && (
+          <button type="button" className="linkbtn" onClick={() => { setPlanBlock(curBlock.id); setPlanOpen(null); }}>Volver al bloque actual</button>
         )}
         {sel && (
           <div className="blockinfo">

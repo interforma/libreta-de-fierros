@@ -362,3 +362,11 @@ img{max-width:100%}
 .chat .ma .punto{margin-top:2px}
 .chat .ma p{margin:0;font-size:1rem;line-height:1.5}
 .chat .ma.urgent{border:1.5px solid var(--danger);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--danger) 10%,var(--surface))}
+
+/* selector de bloques: uno a la vista, con flechas */
+.blocknav{display:grid;grid-template-columns:52px minmax(0,1fr) 52px;align-items:center;gap:8px;margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px}
+.blocknav button{height:52px;border-radius:10px;font-size:1.8rem;line-height:1;font-weight:600;color:var(--ink)}
+.blocknav button:disabled{opacity:.25}
+.bn-mid{display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;min-width:0}
+.bn-mid b{font-size:1.08rem}
+.bn-mid span{font-size:.88rem;color:var(--muted)}
