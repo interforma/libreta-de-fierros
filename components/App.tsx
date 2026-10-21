@@ -1039,31 +1039,64 @@ function Logbook({ uid }: { uid: string }) {
     const canDo = !sel || sel.id === curBlock?.id;
     return (
       <>
-        {Header({ title: "Plan", eyebrow: sel ? `${sel.name} · ${status(sel)}` : "Semana tipo" })}
-        {blocks.length > 1 && sel && (() => {
-          // Un solo bloque a la vista con flechas: no crece aunque se acumulen bloques.
+        {Header({ title: "Plan", eyebrow: "Tu entrenamiento" })}
+        {sel && (() => {
+          // Tarjeta del bloque: dónde estoy (semana N de M), cómo va la semana y navegación entre bloques que no crece.
           const i = blocks.findIndex((b) => b.id === sel.id);
           const go = (d: number) => { const b = blocks[i + d]; if (b) { setPlanBlock(b.id); setPlanOpen(null); } };
+          const st = status(sel), isCur = st === "actual";
+          const w = isCur ? Math.min(weekOf(sel, todayKey), sel.weeks) : st === "anterior" ? sel.weeks + 1 : 0;
+          // sesiones de la semana en curso del bloque
+          let wkDone = 0, wkPlan = 0;
+          if (isCur) {
+            const days = routinesOf(routines, sel.id).flatMap((r) => r.weekdays);
+            const start = parseKey(sel.start_date); start.setDate(start.getDate() + (w - 1) * 7);
+            for (let d = 0; d < 7; d++) {
+              const x = new Date(start); x.setDate(start.getDate() + d);
+              if (days.includes(x.getDay())) wkPlan++;
+              if (sessionDone(keyOf(x))) wkDone++;
+            }
+          }
+          const eyebrow = isCur ? "Bloque actual" : st === "anterior" ? "Bloque anterior" : "Próximo bloque";
+          const side = isCur ? `Semana ${w} de ${sel.weeks}` : st === "anterior" ? "Terminado" : `Empieza el ${shortDate(sel.start_date)}`;
           return (
-            <div className="blocknav" role="group" aria-label="Bloques">
-              <button type="button" disabled={i <= 0} aria-label="Bloque anterior" onClick={() => go(-1)}>‹</button>
-              <div className="bn-mid" aria-live="polite">
-                <b>{sel.name}</b>
-                <span className="num">{status(sel)} · {i + 1} de {blocks.length}</span>
+            <section className={`blockcard ${isCur ? "cur" : ""}`} aria-label={`${sel.name}, ${eyebrow.toLowerCase()}`}>
+              <div className="bc-top">
+                <span className="bc-eye">{eyebrow}</span>
+                <span className="bc-side num">{side}</span>
               </div>
-              <button type="button" disabled={i >= blocks.length - 1} aria-label="Bloque siguiente" onClick={() => go(1)}>›</button>
-            </div>
+              <h2 className="bc-name">{sel.name}</h2>
+              <div className="bc-dates num">{shortDate(sel.start_date)} → {shortDate(blockEnd(sel))}</div>
+              <div className="bc-weeks" role="img" aria-label={isCur ? `Semana ${w} de ${sel.weeks}` : eyebrow}>
+                {Array.from({ length: sel.weeks }, (_, k) => {
+                  const n = k + 1, cls = n < w ? "past" : n === w ? "now" : "";
+                  return (
+                    <div key={n} className={`bc-w ${cls} ${sel.deload_week === n ? "deload" : ""}`}>
+                      <i />
+                      <span>{sel.weeks <= 6 || n === 1 || n === sel.weeks || n === w || sel.deload_week === n ? (sel.deload_week === n ? "Descarga" : `S${n}`) : "\u00a0"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {isCur && wkPlan > 0 && <div className="bc-wk num"><b>{wkDone} de {wkPlan}</b> sesiones esta semana</div>}
+              {blocks.length > 1 && (
+                <div className="bc-nav">
+                  <button type="button" disabled={i <= 0} aria-label="Bloque anterior" onClick={() => go(-1)}>‹</button>
+                  <div className="bc-dots" aria-label={`Bloque ${i + 1} de ${blocks.length}`}>
+                    {blocks.length <= 8
+                      ? blocks.map((b, k) => <i key={b.id} className={`${k === i ? "on" : ""} ${b.id === curBlock?.id ? "cur" : ""}`} />)
+                      : <span className="num">{i + 1} de {blocks.length}</span>}
+                  </div>
+                  <button type="button" disabled={i >= blocks.length - 1} aria-label="Bloque siguiente" onClick={() => go(1)}>›</button>
+                </div>
+              )}
+            </section>
           );
         })()}
         {curBlock && sel && sel.id !== curBlock.id && (
           <button type="button" className="linkbtn" onClick={() => { setPlanBlock(curBlock.id); setPlanOpen(null); }}>Volver al bloque actual</button>
         )}
-        {sel && (
-          <div className="blockinfo">
-            <div className="meta num">{shortDate(sel.start_date)} → {shortDate(blockEnd(sel))} · {sel.weeks} semanas{sel.deload_week ? ` · descarga en semana ${sel.deload_week}` : ""}</div>
-            {sel.focus && <p>{sel.focus}</p>}
-          </div>
-        )}
+        {sel?.focus && <div className="blockinfo"><p>{sel.focus}</p></div>}
         {sel && sel.start_date <= todayKey && (weekOf(sel, todayKey) >= sel.weeks || blockEnd(sel) < todayKey || balances[sel.id]) && (
           <section className="card closecard" style={{ marginTop: 14 }}>
             <div className="eyebrow">Balance de {sel.name}</div>

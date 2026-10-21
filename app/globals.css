@@ -363,10 +363,38 @@ img{max-width:100%}
 .chat .ma p{margin:0;font-size:1rem;line-height:1.5}
 .chat .ma.urgent{border:1.5px solid var(--danger);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--danger) 10%,var(--surface))}
 
-/* selector de bloques: uno a la vista, con flechas */
-.blocknav{display:grid;grid-template-columns:52px minmax(0,1fr) 52px;align-items:center;gap:8px;margin-top:12px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px}
-.blocknav button{height:52px;border-radius:10px;font-size:1.8rem;line-height:1;font-weight:600;color:var(--ink)}
-.blocknav button:disabled{opacity:.25}
-.bn-mid{display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;min-width:0}
-.bn-mid b{font-size:1.08rem}
-.bn-mid span{font-size:.88rem;color:var(--muted)}
+/* tarjeta del bloque en Plan: dónde estoy y navegación entre bloques */
+.blockcard{margin-top:12px;border-radius:18px;padding:16px 16px 10px;background:var(--surface);border:1px solid var(--line);color:var(--ink)}
+.blockcard.cur{background:var(--plate);border-color:var(--plate);color:var(--plate-ink)}
+.bc-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.bc-eye{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.blockcard.cur .bc-eye{color:var(--plate-num)}
+.bc-side{font-size:.92rem;font-weight:700}
+.bc-name{margin:4px 0 0;font-family:var(--display);font-size:2rem;line-height:1.05;letter-spacing:-.02em}
+.bc-dates{font-size:.92rem;color:var(--muted);margin-top:2px}
+.blockcard.cur .bc-dates,.blockcard.cur .bc-wk{color:var(--plate-sub)}
+.bc-weeks{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px;margin-top:14px}
+.bc-w{display:flex;flex-direction:column;gap:6px;min-width:0}
+.bc-w i{height:10px;border-radius:5px;background:var(--line)}
+.blockcard.cur .bc-w i{background:color-mix(in srgb,var(--plate-ink) 18%,transparent)}
+.bc-w.past i{background:var(--plate-sub)}
+.blockcard.cur .bc-w.past i{background:color-mix(in srgb,var(--plate-num) 55%,transparent)}
+.bc-w.now i{background:var(--accent)}
+.bc-w.deload i{background-image:repeating-linear-gradient(135deg,transparent 0 4px,color-mix(in srgb,currentColor 22%,transparent) 4px 7px)}
+.bc-w span{font-size:.78rem;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blockcard.cur .bc-w span{color:var(--plate-sub)}
+.blockcard.cur .bc-w.now span{color:var(--plate-ink);font-weight:700}
+.bc-wk{margin-top:10px;font-size:.95rem}
+.bc-wk b{color:var(--plate-ink);font-size:1.05rem}
+.bc-nav{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;align-items:center;margin-top:10px;border-top:1px solid var(--line);padding-top:6px}
+.blockcard.cur .bc-nav{border-top-color:color-mix(in srgb,var(--plate-ink) 15%,transparent)}
+.bc-nav button{height:48px;border-radius:12px;font-size:1.7rem;line-height:1;font-weight:600;color:inherit}
+.bc-nav button:disabled{opacity:.22}
+.bc-dots{display:flex;justify-content:center;align-items:center;gap:8px;font-size:.88rem;font-weight:600}
+.bc-dots i{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.25}
+.bc-dots i.on{width:22px;border-radius:4px;opacity:1;background:var(--accent)}
+.blockcard .bc-w.past i{background:var(--muted)}
+.blockcard.cur .bc-w.past i{background:color-mix(in srgb,var(--plate-num) 55%,transparent)}
+.blockcard .bc-w.now i,.blockcard.cur .bc-w.now i{background:var(--accent);height:12px;margin-top:-1px;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
+.blockcard .bc-w.deload:not(.past):not(.now) i{background:transparent;border:1.5px dashed currentColor;opacity:.45}
+.bc-weeks .bc-w:last-child span{overflow:visible;text-overflow:clip;text-align:right;direction:rtl}
