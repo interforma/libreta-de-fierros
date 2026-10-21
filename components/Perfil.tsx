@@ -73,7 +73,7 @@ export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p:
           <input id={`pf-s${i}-name`} placeholder="Nombre" value={s.name} onChange={(e) => updSupl(i, { name: e.target.value })} />
           <input id={`pf-s${i}-dose`} placeholder="Dosis" value={s.dose} onChange={(e) => updSupl(i, { dose: e.target.value })} />
           <input id={`pf-s${i}-timing`} placeholder="Cuándo" value={s.timing} onChange={(e) => updSupl(i, { timing: e.target.value })} />
-          <button type="button" className="linkbtn" onClick={() => set("supplements", p.supplements.filter((_, j) => j !== i))}>Quitar</button>
+          <button type="button" className="linkbtn danger" onClick={() => set("supplements", p.supplements.filter((_, j) => j !== i))}>Quitar</button>
         </div>
       ))}
       <button type="button" className="linkbtn" onClick={() => set("supplements", [...p.supplements, { name: "", dose: "", timing: "", since: new Date().toISOString().slice(0, 10) }])}>+ Agregar suplemento</button>
@@ -292,7 +292,7 @@ export function CheckupList({ items, onSaved, onDeleted }: { items: Checkup[]; o
               ))}</div>
             )}
             {c.notes && <><h3 className="sub">Indicaciones</h3><p className="how" style={{ whiteSpace: "pre-wrap" }}>{c.notes}</p></>}
-            <button type="button" className="linkbtn" onClick={() => del(c)}>Borrar</button>
+            <button type="button" className="linkbtn danger" onClick={() => del(c)}>Borrar</button>
           </section>
         ))}</div>
     </>

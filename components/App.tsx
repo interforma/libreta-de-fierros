@@ -768,7 +768,7 @@ function Logbook({ uid }: { uid: string }) {
                     <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => { addPhoto(def.m, e.target.files?.[0]); e.target.value = ""; }} />
                   </label>
                 </div>
-                <button type="button" className="linkbtn" onClick={() => setSheet(def.m)}>¿Te molestó algo? Registrar molestia</button>
+                <button type="button" className="linkbtn" onClick={() => setSheet(def.m)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5M12 16.5v.5" /><circle cx="12" cy="12" r="9" /></svg>¿Te molestó algo? Registrar molestia</button>
               </>
             )}
           </div>
@@ -888,7 +888,7 @@ function Logbook({ uid }: { uid: string }) {
                 <>
                   <button type="button" className={`bubble ${coach.busy ? "busy" : ""}`} onClick={onTap} aria-expanded={more ? coachFull : undefined}>
                     <span>{say}</span>
-                    {more && <small>{coachFull ? "Ver menos" : "Seguir leyendo"}</small>}
+                    {more && <small>{coachFull ? "Ver menos ‹" : "Seguir leyendo ›"}</small>}
                   </button>
                   <PuntoVivo first={coach.busy ? "piensa" : coach.err ? "uy" : "celebra"} size={160} label="Punto" lively={!coach.busy} onTap={() => { unlockAudio(); pop(); }} onAppear={() => chimeOncePerDay(todayKey)} />
                 </>
@@ -909,8 +909,15 @@ function Logbook({ uid }: { uid: string }) {
     return (
       <>
         {head}
+        {complete && review === todayKey && (
+          <div className="peeks">
+            <button type="button" className="peek pk-cur" onClick={() => { setReview(null); window.scrollTo(0, 0); }}>
+              <span className="pk-arrow" aria-hidden="true">‹</span>
+              <span className="pk-text"><span className="pk-eye">Sesión completa</span><b>Volver al resumen del día</b></span>
+            </button>
+          </div>
+        )}
         {close}
-        {complete && review === todayKey && <button type="button" className="linkbtn" onClick={() => { setReview(null); window.scrollTo(0, 0); }}>Volver al resumen del día</button>}
         {!started && <div className="nudge" style={{ marginTop: 14 }}><b>Antes de empezar</b><span>Unos 250 ml de agua, y ten la botella a mano.</span></div>}
         {picking && Picker({ current: r.slug })}
         <div className="list">{warm.map((x) => <Fragment key={x.m}>{Card({ def: x })}</Fragment>)}</div>
@@ -1262,7 +1269,7 @@ function Logbook({ uid }: { uid: string }) {
           );
         })}</div>
         <p className="meta" style={{ margin: "18px 2px 0" }}>
-          <button type="button" className="linkbtn" onClick={() => supabase.auth.signOut()}>Cerrar sesión</button>
+          <button type="button" className="linkbtn quiet" onClick={() => supabase.auth.signOut()}>Cerrar sesión</button>
         </p>
       </>
     );
