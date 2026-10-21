@@ -16,6 +16,7 @@ import { callCoach, shrinkPhoto } from "@/lib/coachClient";
 import { flushPhotos, progressPath, queueAll, queueDel, queuePut, uploadOne } from "@/lib/progressPhotos";
 import { GuidePanel, MachineCatalog, PhotoSheet } from "@/components/Maquinas";
 import Punto from "@/components/Punto";
+import CoachChat from "@/components/CoachChat";
 
 /* ---------- almacenamiento local (caché y cola sin conexión) ---------- */
 const lsGet = (k: string) => { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } };
@@ -688,6 +689,10 @@ function Logbook({ uid }: { uid: string }) {
             ) : (
               <>
                 {Prev({ def })}
+                <CoachChat slug={def.m} date={today!.date} item={it} target={targetText(def)}
+                  block={curBlock ? `${curBlock.name}, semana ${weekOf(curBlock, todayKey)} de ${curBlock.weeks}${deloadNow ? " (descarga)" : ""}. Enfoque: ${curBlock.focus || "no indicado"}` : ""}
+                  chat={it.chat || []}
+                  onTurn={(turn) => mutate((t) => { const x = t.items[def.m]; x.chat = [...(x.chat || []), turn].slice(-10); track(t, "pregunta"); })} />
                 {!isHold && (
                   <div className="ublock">
                     <span className="lab">Esta máquina marca el peso en</span>

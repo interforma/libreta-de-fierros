@@ -55,7 +55,7 @@ export type Block = {
 /** Una serie. Con pirámide, cada serie puede tener varias tandas con el mismo peso:
  *  reps = repeticiones por tanda, tandas = cuántas veces se repite, tdone = tandas ya hechas. */
 export type SetLog = { kg?: number | null; lb?: number | null; reps?: number | null; secs?: number | null; tandas?: number | null; tdone?: number; done: boolean };
-export type ItemLog = { unit?: Unit; sets?: SetLog[]; min?: number | null; done?: boolean; feel?: string | null; note?: string; tip_seen?: boolean; photos?: string[] };
+export type ItemLog = { unit?: Unit; sets?: SetLog[]; min?: number | null; done?: boolean; feel?: string | null; note?: string; tip_seen?: boolean; photos?: string[]; chat?: { q: string; a: string; at: number; urgent?: boolean }[] };
 export type Session = { date: string; routine_slug: string | null; items: Record<string, ItemLog>; client_updated_at: number };
 
 /* fechas */

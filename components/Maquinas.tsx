@@ -5,16 +5,12 @@ import { supabase } from "@/lib/supabase";
 import { callCoach, shrinkPhoto, slugify, uploadMachinePhoto } from "@/lib/coachClient";
 import type { Machine } from "@/lib/logic";
 
-/* ---------------- Guía y preguntas dentro de un ejercicio ---------------- */
-const QUICK = ["La máquina está ocupada, ¿qué hago?", "¿Cómo ajusto la máquina?", "¿Qué siento si lo hago bien?"];
+/* ---------------- Guía paso a paso dentro de un ejercicio (las preguntas van en CoachChat) ---------------- */
 
 export function GuidePanel({ machine, onGuide }: { machine: Machine; onGuide: (slug: string, guide: string) => void }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [q, setQ] = useState("");
-  const [asking, setAsking] = useState(false);
-  const [qa, setQa] = useState<{ q: string; a: string; urgent?: boolean }[]>([]);
 
   async function show() {
     setOpen(true);
@@ -24,31 +20,12 @@ export function GuidePanel({ machine, onGuide }: { machine: Machine; onGuide: (s
     catch (e: any) { setErr(e.message); }
     setBusy(false);
   }
-  async function ask(text: string) {
-    const t = text.trim(); if (!t || asking) return;
-    setAsking(true); setErr(null);
-    try { const j = await callCoach<{ answer: string; urgent?: boolean }>("/api/maquina/pregunta", { slug: machine.slug, q: t }); setQa((x) => [{ q: t, a: j.answer, urgent: j.urgent }, ...x].slice(0, 3)); setQ(""); }
-    catch (e: any) { setErr(e.message); }
-    setAsking(false);
-  }
-
   if (!open) return <button type="button" className="big ghost" onClick={show}>¿Cómo se hace? Ver guía paso a paso</button>;
   return (
     <div className="guide">
       <div className="top-row"><span className="who">Cómo se hace</span><button type="button" className="linkbtn" onClick={() => setOpen(false)}>Ocultar</button></div>
       {busy ? <p className="meta" style={{ margin: 0 }}>Preparando la guía…</p> : machine.guide ? <div className="gtext">{machine.guide}</div> : null}
-      <div className="fld"><span>Pregúntale algo de este ejercicio</span>
-        <div className="chips">{QUICK.map((x) => <button key={x} type="button" disabled={asking} onClick={() => ask(x)}>{x}</button>)}</div>
-        <form className="askrow" onSubmit={(e) => { e.preventDefault(); ask(q); }}>
-          <input className="note" placeholder="O escribe tu duda…" value={q} maxLength={300} onChange={(e) => setQ(e.target.value)} aria-label="Tu pregunta" />
-          <button type="submit" className="suggest" disabled={asking || !q.trim()}>{asking ? "…" : "Preguntar"}</button>
-        </form>
-      </div>
-      {asking && <p className="meta" style={{ margin: 0 }}>Pensando…</p>}
       {err && <p className="msg">{err}</p>}
-      {qa.map((x, i) => (
-        <div key={i} className={`qa ${x.urgent ? "urgent" : ""}`}><b>{x.q}</b><p>{x.a}</p></div>
-      ))}
     </div>
   );
 }

@@ -348,3 +348,17 @@ img{max-width:100%}
 .viewer img{max-width:100%;max-height:calc(100dvh - 120px);border-radius:12px;object-fit:contain}
 .viewer .vbar{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;max-width:560px;margin-top:12px;color:#F2F1EE;font-weight:600}
 .viewer .vbar button{min-height:48px;padding:0 18px;border-radius:12px;border:1.5px solid #F2F1EE;color:#F2F1EE;font-weight:700}
+
+/* conversación con el entrenador dentro del ejercicio */
+.askbtn{display:flex;align-items:center;gap:12px;width:100%;min-height:58px;padding:10px 14px;border:1.5px solid var(--accent-line);background:var(--accent-soft);border-radius:12px;text-align:left;color:var(--ink)}
+.askbtn span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.askbtn b{font-size:1.02rem}
+.askbtn small{font-size:.88rem;color:var(--muted)}
+.chat{display:flex;flex-direction:column;gap:10px;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.chat .who{font-size:.82rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text)}
+.chat .turn{display:flex;flex-direction:column;gap:6px}
+.chat .mq{align-self:flex-end;max-width:85%;margin:0;padding:8px 12px;border-radius:14px 14px 4px 14px;background:var(--sunk);font-weight:600;font-size:.98rem;line-height:1.4}
+.chat .ma{display:flex;gap:10px;align-items:flex-start}
+.chat .ma .punto{margin-top:2px}
+.chat .ma p{margin:0;font-size:1rem;line-height:1.5}
+.chat .ma.urgent{border:1.5px solid var(--danger);border-radius:10px;padding:10px 12px;background:color-mix(in srgb,var(--danger) 10%,var(--surface))}
