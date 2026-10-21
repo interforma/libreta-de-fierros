@@ -398,3 +398,11 @@ img{max-width:100%}
 .blockcard .bc-w.now i,.blockcard.cur .bc-w.now i{background:var(--accent);height:12px;margin-top:-1px;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent)}
 .blockcard .bc-w.deload:not(.past):not(.now) i{background:transparent;border:1.5px dashed currentColor;opacity:.45}
 .bc-weeks .bc-w:last-child span{overflow:visible;text-overflow:clip;text-align:right;direction:rtl}
+/* verde = terminado, en todo el sistema */
+.blockcard .bc-w.past i{background:var(--good)}
+.blockcard.cur .bc-w.past i{background:var(--good)}
+.blockcard.fin{border-color:var(--good-line);background:linear-gradient(var(--good-soft),var(--surface) 70%)}
+.blockcard.fin .bc-eye{color:var(--good)}
+.bc-done{display:inline-flex;align-items:center;gap:6px}
+.bc-done svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.blockcard.cur .bc-w.past i{background:color-mix(in srgb,var(--good) 65%,var(--plate-ink))}

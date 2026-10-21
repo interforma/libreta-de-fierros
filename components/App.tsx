@@ -1057,13 +1057,14 @@ function Logbook({ uid }: { uid: string }) {
               if (sessionDone(keyOf(x))) wkDone++;
             }
           }
+          const okMark = <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>;
           const eyebrow = isCur ? "Bloque actual" : st === "anterior" ? "Bloque anterior" : "Próximo bloque";
           const side = isCur ? `Semana ${w} de ${sel.weeks}` : st === "anterior" ? "Terminado" : `Empieza el ${shortDate(sel.start_date)}`;
           return (
-            <section className={`blockcard ${isCur ? "cur" : ""}`} aria-label={`${sel.name}, ${eyebrow.toLowerCase()}`}>
+            <section className={`blockcard ${isCur ? "cur" : st === "anterior" ? "fin" : ""}`} aria-label={`${sel.name}, ${eyebrow.toLowerCase()}`}>
               <div className="bc-top">
                 <span className="bc-eye">{eyebrow}</span>
-                <span className="bc-side num">{side}</span>
+                {st === "anterior" ? <span className="badge ok bc-done">{okMark}Terminado</span> : <span className="bc-side num">{side}</span>}
               </div>
               <h2 className="bc-name">{sel.name}</h2>
               <div className="bc-dates num">{shortDate(sel.start_date)} → {shortDate(blockEnd(sel))}</div>
@@ -1124,12 +1125,16 @@ function Logbook({ uid }: { uid: string }) {
         <div className="list">{(canDo ? thisWeek() : [1, 2, 3, 4, 5, 6, 0].map((di) => ({ k: "", di }))).map(({ k, di }) => {
           const r = list.find((x) => x.weekdays.includes(di)) || null; const isOpen = planOpen === di;
           const isToday = canDo && k === todayKey, wasDone = canDo && !!k && sessionDone(k);
+          // bloque terminado: cuántas veces se hizo cada rutina dentro del bloque
+          const past = !canDo && !!sel && blockEnd(sel) < todayKey;
+          const times = past && r ? Object.keys(sessions).filter((d) => d >= sel!.start_date && d <= blockEnd(sel!) && sessions[d].routine_slug === r.slug && sessionDone(d)).length : 0;
           return (
-            <section className={`card ${isToday ? "today" : wasDone ? "done" : ""}`} key={di}>
+            <section className={`card ${isToday ? "today" : wasDone || times > 0 ? "done" : ""}`} key={di}>
               <button type="button" className="day" aria-expanded={r ? isOpen : undefined} onClick={() => setPlanOpen(isOpen ? null : di)}>
                 <span className="d">{DAYS[di].slice(0, 3)}</span>
                 <span><span className="name">{r ? r.name : "Descanso"}</span><div className="meta">{r ? `${r.duration_min} min` : "Recuperación"}</div></span>
-                {wasDone ? <span className="badge ok">Hecho</span> : isToday ? <span className="badge today">Hoy</span> : <span className="meta" aria-hidden="true">{r ? (isOpen ? "▴" : "▾") : ""}</span>}
+                {past && r ? (times > 0 ? <span className="badge ok">{times === 1 ? "Hecha 1 vez" : `Hecha ${times} veces`}</span> : <span className="meta">Sin registro</span>)
+                  : wasDone ? <span className="badge ok">Hecho</span> : isToday ? <span className="badge today">Hoy</span> : <span className="meta" aria-hidden="true">{r ? (isOpen ? "▴" : "▾") : ""}</span>}
               </button>
               {isOpen && r && <>
                 <ol className="plist">{r.items.map((x, i) => <li key={i}>{x.label || machines[x.m]?.name} <span>· {targetText(x)}</span>{x.note && <em>{x.note}</em>}</li>)}</ol>
