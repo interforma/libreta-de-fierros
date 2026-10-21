@@ -1,7 +1,11 @@
+"use client";
+
 // Punto, la mascota de Interforma (design system Interforma → Punto).
 // En esta app Punto es la cara del entrenador: aparece solo cuando el entrenador tiene algo que decir.
 // Reglas de marca: cuerpo #EE6E43, ojos #281F18, sin boca ni brazos, nunca sobre fondo naranja.
 // Movimiento: entra una vez (400 ms); `alive` agrega el reposo vivo (respira, parpadea, mira) y se apaga con reducir movimiento.
+
+import { useEffect, useState } from "react";
 
 export type PuntoExpr = "atento" | "piensa" | "celebra" | "uy";
 
@@ -38,4 +42,17 @@ function decor(expr: PuntoExpr) {
   if (expr === "celebra") return <g fill="currentColor"><rect x="14" y="26" width="12" height="12" rx="2" /><circle cx="182" cy="40" r="6" /></g>;
   if (expr === "uy") return <path d="M156 56q-9 14 0 20q9-6 0-20z" fill={SKY} stroke="currentColor" strokeWidth="2.5" />;
   return null;
+}
+
+/** Punto que reacciona y después queda en reposo vivo: entra con `first` (por ejemplo, celebra)
+ *  y a los `after` ms pasa a "atento", respirando, parpadeando y mirando a los lados. */
+export function PuntoVivo({ first = "atento", size = 56, label, after = 2200 }: { first?: PuntoExpr; size?: number; label?: string; after?: number }) {
+  const [e, setE] = useState<PuntoExpr>(first);
+  useEffect(() => {
+    setE(first);
+    if (first === "atento") return;
+    const t = setTimeout(() => setE("atento"), after);
+    return () => clearTimeout(t);
+  }, [first, after]);
+  return <Punto key={e} expr={e} size={size} alive={e === "atento"} label={label} />;
 }

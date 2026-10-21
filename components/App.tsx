@@ -15,7 +15,7 @@ import { getPrefs, savePrefs, SIZES, THEMES, type Prefs } from "@/lib/prefs";
 import { callCoach, shrinkPhoto } from "@/lib/coachClient";
 import { flushPhotos, progressPath, queueAll, queueDel, queuePut, uploadOne } from "@/lib/progressPhotos";
 import { GuidePanel, MachineCatalog, PhotoSheet } from "@/components/Maquinas";
-import Punto from "@/components/Punto";
+import Punto, { PuntoVivo } from "@/components/Punto";
 import CoachChat from "@/components/CoachChat";
 
 /* ---------- almacenamiento local (caché y cola sin conexión) ---------- */
@@ -191,6 +191,7 @@ function Logbook({ uid }: { uid: string }) {
   const [open, setOpen] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [progOpen, setProgOpen] = useState<string | null>(null);
+  const [review, setReview] = useState<string | null>(null); // día en que se pidió ver la sesión ya terminada
   const [planOpen, setPlanOpen] = useState<number | null>(null);
   const [sync, setSync] = useState<Sync>("busy");
   const [loaded, setLoaded] = useState(false);
@@ -805,7 +806,13 @@ function Logbook({ uid }: { uid: string }) {
         </div>}
       </> })
     );
-    if (!r || !today) return <>{head}<div className="empty">Hoy toca descansar. Si igual vas al gimnasio, elige qué rutina harás.</div>{Picker({ current: null })}</>;
+    if (!r || !today) return <>{head}
+      <section className="card donehero rest">
+        <PuntoVivo first="atento" size={72} label="Día de descanso" />
+        <h2>Hoy toca descansar</h2>
+        <p className="meta">El músculo crece mientras recuperas. Si igual vas al gimnasio, elige qué rutina harás.</p>
+      </section>
+      {Picker({ current: null })}</>;
     const isWarm = (x: ItemDef) => x.label === "Calentamiento";
     const isFin = (x: ItemDef) => r.type !== "cardio" && x.k === "cardio" && !isWarm(x);
     const warm = r.items.filter(isWarm), fin = r.items.filter(isFin), main = r.items.filter((x) => !isWarm(x) && !isFin(x));
@@ -814,16 +821,18 @@ function Logbook({ uid }: { uid: string }) {
     const mins = meta.__t0 && meta.__t1 ? Math.round((meta.__t1 - meta.__t0) / 60000) : null;
     const di = FOOD[r.type].findIndex(([t]) => t === "Durante");
     const post = di >= 0 ? FOOD[r.type][di + 1] : null; // lo que va justo después de entrenar
-    const close = done === total && total > 0 && (
+    const complete = done === total && total > 0;
+    const heroMode = complete && review !== todayKey && !picking;
+    const close = complete && (
       <section className="card closecard" aria-live="polite">
-        <div className="eyebrow">Sesión completa{mins && mins < 300 ? ` · ${mins} min` : ""}</div>
+        {!heroMode && <div className="eyebrow">Sesión completa{mins && mins < 300 ? ` · ${mins} min` : ""}</div>}
         <div className="coach">
           {(() => {
             // Punto solo aparece cuando el entrenador está diciendo algo; celebra solo si hubo un logro real.
             const expr = meta.__resumen?.text ? (sessionWin(r.items) ? "celebra" : "atento") : coach.busy ? "piensa" : coach.err ? "uy" : null;
             return (
               <div className="who-row">
-                {expr && <Punto key={expr} expr={expr} size={36} alive={expr === "piensa"} />}
+                {expr && !heroMode && <Punto key={expr} expr={expr} size={36} alive={expr === "piensa"} />}
                 <span className="who">Tu entrenador</span>
               </div>
             );
@@ -847,10 +856,33 @@ function Logbook({ uid }: { uid: string }) {
         </div>
       </section>
     );
+    if (heroMode) {
+      // Sesión terminada: pantalla de cierre en vez de la lista ya hecha. La sesión sigue a un toque.
+      const tmr = new Date(d); tmr.setDate(d.getDate() + 1);
+      const nr = routineForDay(routines, tmr, blocks);
+      return (
+        <>
+          {head}
+          <section className="card donehero" aria-live="polite">
+            <PuntoVivo first="celebra" size={84} label="Sesión completa" />
+            <h2>Listo por hoy</h2>
+            <p className="meta num">{r.name}{mins && mins < 300 ? ` · ${mins} min` : ""} · {total} de {total} hechos</p>
+            <div className="next">
+              <span className="eyebrow">Mañana · {DAYS[tmr.getDay()]}</span>
+              <b>{nr ? nr.name : "Descanso"}</b>
+              <span className="meta">{nr ? (nr.duration_min ? `unos ${nr.duration_min} min` : "") : "Recuperación"}</span>
+            </div>
+          </section>
+          {close}
+          <button type="button" className="big ghost" style={{ marginTop: 14 }} onClick={() => setReview(todayKey)}>Ver o corregir la sesión de hoy</button>
+        </>
+      );
+    }
     return (
       <>
         {head}
         {close}
+        {complete && review === todayKey && <button type="button" className="linkbtn" onClick={() => { setReview(null); window.scrollTo(0, 0); }}>Volver al resumen del día</button>}
         {!started && <div className="nudge" style={{ marginTop: 14 }}><b>Antes de empezar</b><span>Unos 250 ml de agua, y ten la botella a mano.</span></div>}
         {picking && Picker({ current: r.slug })}
         <div className="list">{warm.map((x) => <Fragment key={x.m}>{Card({ def: x })}</Fragment>)}</div>
@@ -943,7 +975,7 @@ function Logbook({ uid }: { uid: string }) {
           return (
             <section className="card hero">
               <div className="ride" style={{ ["--x" as any]: `${((pos + 0.5) / 7) * 100}%` }}>
-                <span className="rider"><Punto key={`${expr}-${pos}`} expr={expr} size={56} label={head} /></span>
+                <span className="rider"><PuntoVivo key={`${expr}-${pos}`} first={expr} size={56} label={head} after={2400} /></span>
               </div>
               <div className="week" role="img" aria-label={`Esta semana: ${wk} de ${planned} sesiones hechas`}>
                 {week.map((w) => <i key={w.k} className={sessionDone(w.k) ? "ok" : w.k === todayKey ? "today" : !hasRoutine(w.di) ? "rest" : ""} />)}
