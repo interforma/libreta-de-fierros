@@ -869,17 +869,32 @@ function Logbook({ uid }: { uid: string }) {
           {head}
           <section className="card donehero cur" aria-live="polite">
             <span className="confetti" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
-            <PuntoVivo first="celebra" size={92} label="Sesión completa" lively />
+            {(() => {
+              // Punto protagonista: dice la primera frase del entrenador; tocando el globo se lee el resto.
+              const full: string = meta.__resumen?.text || "";
+              const first = full.match(/^.+?[.!?](\s|$)/)?.[0]?.trim() || full;
+              const more = full.length > first.length + 2;
+              const say = coach.busy ? "Estoy mirando tu sesión…" : full ? (coachFull ? full : first) : coach.err ? "No pude preparar mi comentario. Tócame para intentar de nuevo." : "¡Sesión completa!";
+              const onTap = () => { if (full && more) setCoachFull(!coachFull); else if (!full && !coach.busy) askCoach(); };
+              return (
+                <>
+                  <button type="button" className={`bubble ${coach.busy ? "busy" : ""}`} onClick={onTap} aria-expanded={more ? coachFull : undefined}>
+                    <span>{say}</span>
+                    {more && <small>{coachFull ? "Ver menos" : "Seguir leyendo"}</small>}
+                  </button>
+                  <PuntoVivo first={coach.busy ? "piensa" : coach.err ? "uy" : "celebra"} size={160} label="Tu entrenador" lively={!coach.busy} />
+                </>
+              );
+            })()}
             <h2>Listo por hoy</h2>
-            <p className="meta num">{r.name}{mins && mins < 300 ? ` · ${mins} min` : ""} · {total} de {total} hechos</p>
+            <p className="meta num">{r.name}{mins && mins < 300 ? ` · ${mins} min` : ""}</p>
             <div className="next">
               <span className="eyebrow">Mañana · {DAYS[tmr.getDay()]}</span>
               <b>{nr ? nr.name : "Descanso"}</b>
               <span className="meta">{nr ? (nr.duration_min ? `unos ${nr.duration_min} min` : "") : "Recuperación"}</span>
             </div>
-            <button type="button" className="review" onClick={() => setReview(todayKey)}>Ver o corregir la sesión de hoy</button>
+            <button type="button" className="review" onClick={() => { setReview(todayKey); window.scrollTo(0, 0); }}>Ver detalle de la sesión</button>
           </section>
-          {close}
         </>
       );
     }
