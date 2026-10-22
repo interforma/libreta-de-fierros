@@ -33,9 +33,9 @@ export const GOALS: [Profile["goal"], string][] = [
 
 /* ---------------- Balance energético ---------------- */
 export const ACTIVITIES: [NonNullable<Profile["activity"]>, string, number][] = [
-  ["baja", "Baja (1 a 3 días de ejercicio)", 1.375],
-  ["moderada", "Moderada (3 a 5 días)", 1.55],
-  ["alta", "Alta (6 a 7 días)", 1.725],
+  ["baja", "Baja (poco ejercicio, 1 a 2 días)", 1.375],
+  ["moderada", "Moderada (gimnasio o deporte 3 a 6 días)", 1.55],
+  ["alta", "Alta (entrenamiento intenso a diario o trabajo físico)", 1.725],
   ["muy_alta", "Muy alta (doble sesión o fondo largo)", 1.9],
 ];
 // [clave, nombre, ajuste de kcal sobre el gasto, g de proteína por kg, explicación]
@@ -48,12 +48,32 @@ export const ENERGY_GOALS: [NonNullable<Profile["energy_goal"]>, string, number,
 const r50 = (n: number) => Math.round(n / 50) * 50;
 const r5 = (n: number) => Math.round(n / 5) * 5;
 
+/** Objetivo de calorías sugerido según el objetivo del perfil, con el motivo en una frase. */
+export function suggestedEnergyGoal(p: Pick<Profile, "goal" | "height_cm" | "weight_kg">): { key: NonNullable<Profile["energy_goal"]>; why: string } | null {
+  const b = p.height_cm && p.weight_kg ? p.weight_kg / (p.height_cm / 100) ** 2 : null;
+  switch (p.goal) {
+    case "musculo":
+      return b != null && b >= 27
+        ? { key: "recomposicion", why: "Para ganar músculo y, de paso, bajar algo de grasa: déficit leve con proteína alta." }
+        : { key: "superavit", why: "Para ganar músculo conviene comer un poco más de lo que gastas, con proteína alta." };
+    case "bajar_grasa":
+      return { key: "deficit", why: "Para bajar grasa sin perder músculo: déficit moderado y proteína alta." };
+    case "fuerza":
+    case "rendimiento":
+      return { key: "mantencion", why: "Para rendir y ganar fuerza basta con comer lo que gastas." };
+    case "salud":
+      return { key: "mantencion", why: "Para salud y movilidad, lo más simple es mantener tu peso." };
+    default:
+      return null;
+  }
+}
+
 /** Actividad elegida, o la que se deduce de los días por semana. */
 export function activityOf(p: Pick<Profile, "activity" | "days_per_week">) {
   if (p.activity) return p.activity;
   const d = p.days_per_week;
   if (!d) return null;
-  return d >= 6 ? "alta" : d >= 4 ? "moderada" : "baja";
+  return d >= 7 ? "alta" : d >= 3 ? "moderada" : "baja";
 }
 
 /**

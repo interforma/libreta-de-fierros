@@ -523,3 +523,7 @@ img{max-width:100%}
 .top-row .linkbtn{min-height:40px;padding:0 14px;font-size:.9rem}
 .timer .cancel{border:1.5px solid color-mix(in srgb,currentColor 35%,transparent)!important;text-decoration:none!important;border-radius:22px;padding:0 16px;margin-top:4px}
 .donehero .bubble small{text-decoration:none}
+
+/* chip sugerido en Energía diaria */
+.chips button .sug-tag{margin-left:8px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent-text);font-size:.76rem;font-weight:700;letter-spacing:.02em;vertical-align:1px}
+.chips button.on .sug-tag{background:var(--accent);color:var(--accent-ink)}

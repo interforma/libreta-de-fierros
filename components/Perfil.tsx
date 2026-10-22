@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { ACTIVITIES, AREAS, ENERGY_GOALS, GOALS, MOMENTS, activityOf, bmi, energy, monthsSince, redFlag, type Discomfort, type MealAi, type Profile, type Supplement } from "@/lib/health";
+import { ACTIVITIES, AREAS, ENERGY_GOALS, GOALS, MOMENTS, activityOf, bmi, energy, monthsSince, suggestedEnergyGoal, redFlag, type Discomfort, type MealAi, type Profile, type Supplement } from "@/lib/health";
 import { fmtNum, parseNum, shortDate, type Machine } from "@/lib/logic";
 import { callCoach } from "@/lib/coachClient";
 import Punto from "@/components/Punto";
@@ -85,8 +85,21 @@ export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p:
         <option value="">Según días por semana{activityOf({ ...p, activity: null }) ? ` (${ACTIVITIES.find((a) => a[0] === activityOf({ ...p, activity: null }))?.[1].split(" (")[0].toLowerCase()})` : ""}</option>
         {ACTIVITIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
       <div className="field">Objetivo de calorías
-        <div className="chips">{ENERGY_GOALS.map(([k, l]) => <button key={k} type="button" className={p.energy_goal === k ? "on" : ""} onClick={() => set("energy_goal", p.energy_goal === k ? null : k)}>{l.split(" (")[0]}</button>)}</div>
-        {p.energy_goal && <span className="meta">{ENERGY_GOALS.find((g) => g[0] === p.energy_goal)?.[4]}</span>}
+        {(() => {
+          const sug = suggestedEnergyGoal(p);
+          const cur = ENERGY_GOALS.find((g) => g[0] === p.energy_goal);
+          return <>
+            <div className="chips">{ENERGY_GOALS.map(([k, l]) => (
+              <button key={k} type="button" className={p.energy_goal === k ? "on" : ""} aria-pressed={p.energy_goal === k} onClick={() => set("energy_goal", p.energy_goal === k ? null : k)}>
+                {l.split(" (")[0]}{sug?.key === k && <span className="sug-tag">Sugerido</span>}
+              </button>
+            ))}</div>
+            {sug && (!p.energy_goal || p.energy_goal === sug.key)
+              ? <span className="meta">{sug.why}</span>
+              : cur && <span className="meta">{cur[4]}{sug ? ` Para tu objetivo sugerimos ${ENERGY_GOALS.find((g) => g[0] === sug.key)![1].split(" (")[0].toLowerCase()}.` : ""}</span>}
+            {!sug && !p.energy_goal && <span className="meta">Elige primero tu objetivo más arriba y te sugerimos uno.</span>}
+          </>;
+        })()}
       </div>
       <div className="grid2">
         <label className="field">kcal indicadas por tu nutricionista<input id="pf-kcal" inputMode="numeric" placeholder="Opcional" value={p.kcal_target ?? ""} onChange={(e) => set("kcal_target", parseNum(e.target.value) ? Math.round(parseNum(e.target.value)!) : null)} /></label>
@@ -110,6 +123,7 @@ function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void
     <>
       <h3 className="sub">Energía diaria</h3>
       <p className="how">Gastas cerca de <b>{n(e.tdee)} kcal</b> al día. Elige un objetivo de calorías para ver tu meta.</p>
+      {suggestedEnergyGoal(profile) && <p className="meta">Para tu objetivo sugerimos <b>{ENERGY_GOALS.find((g) => g[0] === suggestedEnergyGoal(profile)!.key)![1].split(" (")[0].toLowerCase()}</b>. {suggestedEnergyGoal(profile)!.why}</p>}
       <button type="button" className="linkbtn" onClick={onEdit}>Elegir objetivo</button>
     </>
   );
