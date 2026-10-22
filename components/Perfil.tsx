@@ -115,33 +115,63 @@ export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p:
 }
 
 /* ---------------- Energía diaria ---------------- */
+// Zona propia con alto contraste: la meta es el número principal (placa oscura, como el temporizador),
+// proteína y gasto van debajo, y una guía fija explica qué significa cada cifra con comida concreta.
+const PROTEIN_FOODS: [string, number][] = [
+  ["100 g de pollo o pavo cocido (una palma)", 30],
+  ["100 g de carne magra o pescado cocido", 25],
+  ["1 lata de atún al agua, escurrida", 25],
+  ["1 taza de porotos, lentejas o garbanzos cocidos", 15],
+  ["1 yogur proteico (revisa la etiqueta)", 15],
+  ["2 huevos", 12],
+  ["1 taza de leche", 8],
+  ["50 g de quesillo", 6],
+];
 function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void }) {
   const e = energy(profile);
   if (!e) return null;
   const n = (x: number) => x.toLocaleString("es-CL");
+  const sug = suggestedEnergyGoal(profile);
   if (!e.goal && !e.targetFromPro) return (
-    <>
-      <h3 className="sub">Energía diaria</h3>
-      <p className="how">Gastas cerca de <b>{n(e.tdee)} kcal</b> al día. Elige un objetivo de calorías para ver tu meta.</p>
-      {suggestedEnergyGoal(profile) && <p className="meta">Para tu objetivo sugerimos <b>{ENERGY_GOALS.find((g) => g[0] === suggestedEnergyGoal(profile)!.key)![1].split(" (")[0].toLowerCase()}</b>. {suggestedEnergyGoal(profile)!.why}</p>}
-      <button type="button" className="linkbtn" onClick={onEdit}>Elegir objetivo</button>
-    </>
-  );
-  return (
-    <>
-      <h3 className="sub">Energía diaria{e.goal ? ` · ${e.goal[1].split(" (")[0].toLowerCase()}` : ""}</h3>
-      <div className="stats" style={{ marginTop: 0 }}>
-        <div className="stat"><div className="v num">{n(e.target!)}</div><div className="k">kcal meta</div></div>
-        <div className="stat"><div className="v num">{e.protein}</div><div className="k">g proteína</div></div>
-        <div className="stat"><div className="v num">{n(e.tdee)}</div><div className="k">kcal gasto</div></div>
+    <section className="ezone" aria-label="Energía diaria">
+      <div className="ezone-title">Energía diaria</div>
+      <div className="eplate">
+        <div className="eplate-k">Gastas cerca de</div>
+        <div className="eplate-v num">{n(e.tdee)} <small>kcal al día</small></div>
       </div>
-      <p className="meta">
-        {e.targetFromPro ? "Meta indicada por tu nutricionista. " : `Gasto estimado ${e.delta! > 0 ? "+" : e.delta! < 0 ? "−" : "±"} ${Math.abs(e.delta!)} kcal${e.floored ? " (ajustada para no bajar de tu metabolismo basal)" : ""}. `}
-        Basal {n(e.bmr)} kcal · actividad: {e.activityLabel}.
-        {" "}Es una estimación: si en 3 a 4 semanas el peso o las medidas no van en la dirección que buscas, ajusta ±150 kcal o consulta en tu próximo control.
-      </p>
+      {sug && <p className="how">Para tu objetivo sugerimos <b>{ENERGY_GOALS.find((g) => g[0] === sug.key)![1].split(" (")[0].toLowerCase()}</b>. {sug.why}</p>}
+      <button type="button" className="big" onClick={onEdit}>Elegir objetivo de calorías</button>
+    </section>
+  );
+  const perMeal = Math.round(e.protein / 4 / 5) * 5;
+  const goalName = e.goal ? e.goal[1].split(" (")[0].toLowerCase() : "indicada";
+  return (
+    <section className="ezone" aria-label="Energía diaria">
+      <div className="ezone-title">Energía diaria <span className="ezone-tag">{e.targetFromPro ? "del nutricionista" : goalName}</span></div>
+      <div className="eplate">
+        <div className="eplate-k">Tu meta de hoy</div>
+        <div className="eplate-v num">{n(e.target!)} <small>kcal</small></div>
+        <div className="eplate-row">
+          <div><span className="num">{e.protein} g</span><small>de proteína al día</small></div>
+          <div><span className="num">{n(e.tdee)}</span><small>kcal que gastas</small></div>
+        </div>
+      </div>
+
+      <details className="eguide">
+        <summary>¿Qué significan estos números?</summary>
+        <div className="eguide-body">
+          <p><b>{n(e.target!)} kcal</b> es lo que te conviene comer en total cada día, sumando todas las comidas.
+            {e.targetFromPro ? " Es la cifra que te indicó tu nutricionista." : e.delta === 0 ? " Es lo mismo que gastas, para mantener tu peso." : e.delta! > 0 ? ` Son ${Math.abs(e.delta!)} kcal más de lo que gastas, para tener material con qué construir músculo.` : ` Son ${Math.abs(e.delta!)} kcal menos de lo que gastas, para bajar grasa de a poco.`}</p>
+          <p><b>{e.protein} g de proteína</b> es la proteína que debes consumir en el día, no el peso de la comida. Lo más fácil es repartirla en 4 comidas: <b>unos {perMeal} g en cada una</b>.</p>
+          <div className="eguide-k">Cuánta proteína trae cada alimento</div>
+          <ul className="pfoods">{PROTEIN_FOODS.map(([f, g]) => <li key={f}><span>{f}</span><b className="num">~{g} g</b></li>)}</ul>
+          <p className="meta">Ejemplo para una comida de ~{perMeal} g: {perMeal >= 30 ? "100 g de pollo cocido, o 2 huevos con una taza de leche y un yogur proteico" : "1 lata de atún, o 2 huevos con una taza de leche"}.</p>
+          <p className="meta">Basal {n(e.bmr)} kcal · actividad: {e.activityLabel}{e.floored ? " · meta ajustada para no bajar de tu basal" : ""}. Es una estimación: si en 3 a 4 semanas el peso o las medidas no van hacia donde buscas, ajusta unas 150 kcal o consúltalo en tu próximo control.</p>
+        </div>
+      </details>
+
       <MealCoach profile={profile} target={e.target!} protein={e.protein} />
-    </>
+    </section>
   );
 }
 

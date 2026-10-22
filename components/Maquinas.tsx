@@ -129,6 +129,8 @@ export function MachineCatalog({ uid, machines, photoUrl, onGuide, onSaved, onAd
   const list = Object.values(machines).sort((a, b) => a.name.localeCompare(b.name, "es"));
   const own = list.filter((m) => m.photo_path).length;
   const [busy, setBusy] = useState<string | null>(null);
+  // Comprimido por defecto: el listado completo es largo y tapa el resto del Perfil.
+  const [open, setOpen] = useState(false);
   async function changePhoto(m: Machine, f: File | undefined) {
     if (!f) return;
     setBusy(m.slug);
@@ -142,9 +144,14 @@ export function MachineCatalog({ uid, machines, photoUrl, onGuide, onSaved, onAd
   }
   return (
     <>
-      <p className="meta" style={{ margin: "6px 2px 0" }}>{list.length} máquinas · {own} con foto de tu gimnasio</p>
-      <button type="button" className="big ghost" style={{ marginTop: 10 }} onClick={onAdd}>Agregar una máquina con una foto</button>
-      <div className="list">{list.map((m) => (
+      <div className="mcat-head">
+        <button type="button" className="mcat-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span><b>{open ? "Ocultar el listado" : `Ver las ${list.length} máquinas`}</b><small>{own} con foto de tu gimnasio</small></span>
+          <i aria-hidden="true">{open ? "−" : "+"}</i>
+        </button>
+        <button type="button" className="big ghost" onClick={onAdd}>Agregar una máquina con una foto</button>
+      </div>
+      {open && <div className="list">{list.map((m) => (
         <details className="card mcard" key={m.slug}>
           <summary className="head">
             <img className="thumb" src={photoUrl(m)} alt="" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
@@ -158,7 +165,8 @@ export function MachineCatalog({ uid, machines, photoUrl, onGuide, onSaved, onAd
             <GuidePanel machine={m} onGuide={onGuide} />
           </div>
         </details>
-      ))}</div>
+      ))}</div>}
+      {open && list.length > 6 && <button type="button" className="linkbtn" style={{ marginTop: 8 }} onClick={() => setOpen(false)}>Ocultar el listado</button>}
     </>
   );
 }

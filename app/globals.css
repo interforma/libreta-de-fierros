@@ -527,3 +527,43 @@ img{max-width:100%}
 /* chip sugerido en Energía diaria */
 .chips button .sug-tag{margin-left:8px;padding:2px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent-text);font-size:.76rem;font-weight:700;letter-spacing:.02em;vertical-align:1px}
 .chips button.on .sug-tag{background:var(--accent);color:var(--accent-ink)}
+
+/* Energía diaria: zona propia con alto contraste (placa como el temporizador) */
+.ezone{display:flex;flex-direction:column;gap:12px;margin-top:6px;padding-top:16px;border-top:2px solid var(--line)}
+.ezone-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-family:var(--display);font-size:1.18rem;font-weight:600}
+.ezone-tag{font-family:var(--body);font-size:.82rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent-text);border:1px solid var(--accent-line)}
+.eplate{background:var(--plate);color:var(--plate-ink);border-radius:var(--r);padding:16px 16px 14px;display:flex;flex-direction:column;gap:2px}
+.eplate-k{font-size:.92rem;font-weight:600;color:var(--plate-sub)}
+.eplate-v{font-size:2.6rem;font-weight:700;line-height:1.05;color:var(--plate-num);letter-spacing:-.01em}
+.eplate-v small{font-family:var(--body);font-size:1rem;font-weight:600;color:var(--plate-ink)}
+.eplate-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid color-mix(in srgb,var(--plate-sub) 45%,transparent)}
+.eplate-row div{display:flex;flex-direction:column;gap:2px}
+.eplate-row .num{font-size:1.5rem;font-weight:700;color:var(--plate-ink);line-height:1.1}
+.eplate-row small{font-size:.88rem;color:var(--plate-sub)}
+.eguide{border:1.5px solid var(--accent-line);background:var(--accent-soft);border-radius:12px}
+.eguide summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:52px;padding:0 14px;font-weight:700;font-size:1.02rem;color:var(--ink)}
+.eguide summary::-webkit-details-marker{display:none}
+.eguide summary::after{content:"+";font-size:1.4rem;font-weight:600;color:var(--accent-text)}
+.eguide[open] summary::after{content:"−"}
+.eguide-body{display:flex;flex-direction:column;gap:10px;padding:0 14px 14px}
+.eguide-body p{margin:0;font-size:1rem;line-height:1.5}
+.eguide-k{font-size:.82rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-text);margin-top:4px}
+.pfoods{list-style:none;margin:0;padding:0;background:var(--field);border:1px solid var(--line);border-radius:10px}
+.pfoods li{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:10px 12px;font-size:.98rem}
+.pfoods li+li{border-top:1px solid var(--line)}
+.pfoods b{flex:none;font-size:1.05rem;color:var(--ink)}
+
+/* Perfil: zonas con más contraste para leer de un vistazo */
+.pcard .stat{background:var(--field);border:1.5px solid var(--line-strong)}
+.pcard .stat .v{font-weight:700}
+.pcard > .sub{padding-top:14px;border-top:2px solid var(--line);font-size:1.18rem}
+.pcard .supl{background:var(--good-soft);border:1.5px solid var(--good-line)}
+.pcard .supl span{color:var(--ink);opacity:.8}
+
+/* Máquinas del gimnasio: comprimido por defecto */
+.mcat-head{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.mcat-toggle{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:60px;padding:10px 14px;border-radius:12px;background:var(--surface);border:1.5px solid var(--line-strong);text-align:left}
+.mcat-toggle span{display:flex;flex-direction:column;gap:2px}
+.mcat-toggle b{font-size:1.02rem}
+.mcat-toggle small{font-size:.88rem;color:var(--muted)}
+.mcat-toggle i{font-style:normal;font-size:1.5rem;font-weight:600;color:var(--accent-text);line-height:1}
