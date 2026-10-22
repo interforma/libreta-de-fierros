@@ -18,7 +18,9 @@ export type Profile = {
   energy_goal: "deficit" | "recomposicion" | "mantencion" | "superavit" | null;
   kcal_target: number | null;   // indicado por un profesional; reemplaza el cálculo
   protein_target: number | null;
+  meal_ai?: MealAi | null;      // última sugerencia de alimentación (la escribe /api/alimentacion)
 };
+export type MealAi = { mode: "dia" | "revisar"; text: string; at: string; kcal: number; protein: number };
 export const EMPTY_PROFILE: Profile = {
   name: "", sex: null, age: null, height_cm: null, weight_kg: null, sport_history: "", gym_since: null,
   days_per_week: null, goal: null, conditions: "", supplements: [], nutrition: "",

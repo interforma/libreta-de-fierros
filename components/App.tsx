@@ -399,7 +399,7 @@ function Logbook({ uid }: { uid: string }) {
 
   /* ---- perfil y molestias ---- */
   async function saveProfile(p: Profile) {
-    const { user_id, updated_at, ...rest } = p as any;
+    const { user_id, updated_at, meal_ai, ...rest } = p as any; // meal_ai lo escribe solo /api/alimentacion
     const { data, error } = await supabase.from("profiles").upsert({ ...rest, user_id: uid }).select().single();
     const v = { ...EMPTY_PROFILE, ...(error ? p : data) } as Profile;
     setProfile(v); lsSet(`lf.${uid}.profile`, v);

@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { ACTIVITIES, AREAS, ENERGY_GOALS, GOALS, MOMENTS, activityOf, bmi, energy, monthsSince, redFlag, type Discomfort, type Profile, type Supplement } from "@/lib/health";
+import { ACTIVITIES, AREAS, ENERGY_GOALS, GOALS, MOMENTS, activityOf, bmi, energy, monthsSince, redFlag, type Discomfort, type MealAi, type Profile, type Supplement } from "@/lib/health";
 import { fmtNum, parseNum, shortDate, type Machine } from "@/lib/logic";
+import { callCoach } from "@/lib/coachClient";
+import Punto from "@/components/Punto";
 
 /* ---------------- Perfil ---------------- */
 export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p: Profile) => Promise<void> }) {
@@ -124,7 +126,59 @@ function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void
         Basal {n(e.bmr)} kcal · actividad {ACTIVITIES.find((a) => a[0] === e.activity)?.[1].split(" (")[0].toLowerCase() || "moderada"}{e.activityGuessed ? " (según tus días por semana)" : ""}.
         {" "}Es una estimación: si en 3 a 4 semanas el peso o las medidas no van en la dirección que buscas, ajusta ±150 kcal o consulta en tu próximo control.
       </p>
+      <MealCoach profile={profile} target={e.target!} protein={e.protein} />
     </>
+  );
+}
+
+/* ---------------- Alimentación con el entrenador ---------------- */
+// A pedido: un día de comidas de ejemplo o la revisión del plan escrito. Las cifras vienen de energy();
+// Claude solo arma el menú. Punto es la cara de la respuesta, como en el chat de cada ejercicio.
+function MealCoach({ profile, target, protein }: { profile: Profile; target: number; protein: number }) {
+  const [meal, setMeal] = useState<MealAi | null>(profile.meal_ai ?? null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<MealAi["mode"] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const hasPlan = profile.nutrition.trim().length >= 20;
+  // si la meta cambió desde la última sugerencia, se avisa para pedir una nueva
+  const stale = !!meal && (meal.kcal !== target || meal.protein !== protein);
+
+  async function ask(mode: MealAi["mode"]) {
+    if (busy) return;
+    setBusy(mode); setErr(null); setOpen(true);
+    try {
+      const j = await callCoach<MealAi>("/api/alimentacion", { mode, previous: mode === "dia" && meal?.mode === "dia" ? meal.text : undefined });
+      setMeal(j);
+    } catch (e: any) { setErr(navigator.onLine ? e.message : "Sin señal: el entrenador necesita conexión para responder."); }
+    setBusy(null);
+  }
+
+  if (!open && !busy) return (
+    <button type="button" className="askbtn" onClick={() => (meal ? setOpen(true) : ask("dia"))}>
+      <Punto expr="atento" size={30} />
+      <span><b>{meal ? "Ver sugerencia de comidas" : "Sugerir un día de comidas"}</b>
+        <small>{meal ? `${meal.mode === "dia" ? "Día de ejemplo" : "Revisión de tu plan"} · ${shortDate(meal.at.slice(0, 10))}` : `Con tu meta de ${target.toLocaleString("es-CL")} kcal y ${protein} g de proteína`}</small></span>
+    </button>
+  );
+
+  return (
+    <div className="chat" aria-live="polite">
+      <div className="top-row"><span className="who">Tu entrenador · alimentación</span><button type="button" className="linkbtn" onClick={() => setOpen(false)}>Ocultar</button></div>
+      {busy ? (
+        <div className="ma"><Punto expr="piensa" size={28} alive /><p className="meta">{busy === "dia" ? "Armando un día de comidas…" : "Revisando tu plan…"}</p></div>
+      ) : meal && (
+        <>
+          <div className="ma"><Punto expr="atento" size={28} /><p style={{ whiteSpace: "pre-wrap" }}>{meal.text}</p></div>
+          {stale && <p className="meta">Tu meta cambió desde esta sugerencia. Pide una nueva para ajustarla.</p>}
+        </>
+      )}
+      {err && <p className="msg">{err}</p>}
+      <div className="chips">
+        <button type="button" disabled={!!busy} onClick={() => ask("dia")}>{meal?.mode === "dia" ? "Otra opción de día" : "Sugerir un día de comidas"}</button>
+        {hasPlan && <button type="button" disabled={!!busy} onClick={() => ask("revisar")}>Revisar mi plan</button>}
+      </div>
+      <p className="meta">Es una guía general. Si tienes indicaciones de tu nutricionista, mandan esas.</p>
+    </div>
   );
 }
 
