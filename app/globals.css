@@ -567,3 +567,8 @@ img{max-width:100%}
 .mcat-toggle b{font-size:1.02rem}
 .mcat-toggle small{font-size:.88rem;color:var(--muted)}
 .mcat-toggle i{font-style:normal;font-size:1.5rem;font-weight:600;color:var(--accent-text);line-height:1}
+
+/* Plan escrito: comprimido dentro de Energía, en tono neutro para no competir con la guía */
+.eguide.plain{background:var(--field);border-color:var(--line-strong)}
+.eguide.plain summary span{display:flex;flex-direction:column;gap:2px;padding:8px 0}
+.eguide.plain summary small{font-size:.88rem;font-weight:500;color:var(--muted)}

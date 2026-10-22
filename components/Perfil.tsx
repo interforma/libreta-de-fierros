@@ -43,8 +43,9 @@ export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p:
             <div className="supl" key={i}><b>{s.name}</b><span>{s.dose}{s.timing ? ` · ${s.timing}` : ""}{s.since ? ` · desde ${shortDate(s.since)}` : ""}</span></div>
           ))}
         </>}
-        <EnergyBlock profile={profile} onEdit={() => setEdit(true)} />
-        {profile.nutrition && <><h3 className="sub">Alimentación</h3><p className="how" style={{ whiteSpace: "pre-wrap" }}>{profile.nutrition}</p></>}
+        <EnergyBlock profile={profile} onEdit={() => setEdit(true)} onSave={onSave} />
+        {/* sin datos para calcular energía, el plan escrito se sigue mostrando aquí */}
+        {!energy(profile) && profile.nutrition && <><h3 className="sub">Alimentación</h3><p className="how" style={{ whiteSpace: "pre-wrap" }}>{profile.nutrition}</p></>}
       </section>
     );
   }
@@ -127,7 +128,7 @@ const PROTEIN_FOODS: [string, number][] = [
   ["1 taza de leche", 8],
   ["50 g de quesillo", 6],
 ];
-function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void }) {
+function EnergyBlock({ profile, onEdit, onSave }: { profile: Profile; onEdit: () => void; onSave: (p: Profile) => Promise<void> }) {
   const e = energy(profile);
   if (!e) return null;
   const n = (x: number) => x.toLocaleString("es-CL");
@@ -170,7 +171,17 @@ function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void
         </div>
       </details>
 
-      <MealCoach profile={profile} target={e.target!} protein={e.protein} />
+      <MealCoach profile={profile} target={e.target!} protein={e.protein} onSave={onSave} />
+
+      <details className="eguide plain">
+        <summary><span>Tu plan escrito<small>{profile.nutrition.trim() ? "Lo que lee “Revisar mi plan”" : "Aún no tienes uno"}</small></span></summary>
+        <div className="eguide-body">
+          {profile.nutrition.trim()
+            ? <p style={{ whiteSpace: "pre-wrap" }}>{profile.nutrition}</p>
+            : <p>Pide un día de comidas al entrenador y toca <b>Usar como mi plan</b>, o escríbelo tú en Editar.</p>}
+          <button type="button" className="linkbtn" onClick={onEdit}>Editar mi plan</button>
+        </div>
+      </details>
     </section>
   );
 }
@@ -178,7 +189,7 @@ function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void
 /* ---------------- Alimentación con el entrenador ---------------- */
 // A pedido: un día de comidas de ejemplo o la revisión del plan escrito. Las cifras vienen de energy();
 // Claude solo arma el menú. Punto es la cara de la respuesta, como en el chat de cada ejercicio.
-function MealCoach({ profile, target, protein }: { profile: Profile; target: number; protein: number }) {
+function MealCoach({ profile, target, protein, onSave }: { profile: Profile; target: number; protein: number; onSave: (p: Profile) => Promise<void> }) {
   const [meal, setMeal] = useState<MealAi | null>(profile.meal_ai ?? null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<MealAi["mode"] | null>(null);
@@ -186,6 +197,20 @@ function MealCoach({ profile, target, protein }: { profile: Profile; target: num
   const hasPlan = profile.nutrition.trim().length >= 20;
   // si la meta cambió desde la última sugerencia, se avisa para pedir una nueva
   const stale = !!meal && (meal.kcal !== target || meal.protein !== protein);
+  const [saving, setSaving] = useState(false);
+  const adopted = !!meal && meal.mode === "dia" && profile.nutrition.includes(meal.text.slice(0, 120));
+
+  // Reemplaza el plan escrito por el día que propuso el entrenador, con la meta a la vista.
+  async function adopt() {
+    if (!meal || saving) return;
+    if (profile.nutrition.trim() && !confirm("¿Reemplazar tu plan escrito por este día de comidas?")) return;
+    setSaving(true); setErr(null);
+    try {
+      const head = `Plan del entrenador (${shortDate(meal.at.slice(0, 10))}) para ${meal.kcal.toLocaleString("es-CL")} kcal y ${meal.protein} g de proteína:`;
+      await onSave({ ...profile, nutrition: `${head}\n${meal.text}` });
+    } catch { setErr("No se pudo guardar. Revisa tu conexión e intenta de nuevo."); }
+    setSaving(false);
+  }
 
   async function ask(mode: MealAi["mode"]) {
     if (busy) return;
@@ -214,6 +239,9 @@ function MealCoach({ profile, target, protein }: { profile: Profile; target: num
         <>
           <div className="ma"><Punto expr="atento" size={28} /><p style={{ whiteSpace: "pre-wrap" }}>{meal.text}</p></div>
           {stale && <p className="meta">Tu meta cambió desde esta sugerencia. Pide una nueva para ajustarla.</p>}
+          {meal.mode === "dia" && !stale && (adopted
+            ? <p className="hint">Este es tu plan actual.</p>
+            : <button type="button" className="big" disabled={saving} onClick={adopt}>{saving ? "Guardando…" : "Usar como mi plan"}</button>)}
         </>
       )}
       {err && <p className="msg">{err}</p>}
