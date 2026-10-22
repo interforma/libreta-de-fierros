@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { AREAS, GOALS, MOMENTS, bmi, monthsSince, redFlag, type Discomfort, type Profile, type Supplement } from "@/lib/health";
+import { ACTIVITIES, AREAS, ENERGY_GOALS, GOALS, MOMENTS, activityOf, bmi, energy, monthsSince, redFlag, type Discomfort, type Profile, type Supplement } from "@/lib/health";
 import { fmtNum, parseNum, shortDate, type Machine } from "@/lib/logic";
 
 /* ---------------- Perfil ---------------- */
@@ -41,6 +41,7 @@ export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p:
             <div className="supl" key={i}><b>{s.name}</b><span>{s.dose}{s.timing ? ` · ${s.timing}` : ""}{s.since ? ` · desde ${shortDate(s.since)}` : ""}</span></div>
           ))}
         </>}
+        <EnergyBlock profile={profile} onEdit={() => setEdit(true)} />
         {profile.nutrition && <><h3 className="sub">Alimentación</h3><p className="how" style={{ whiteSpace: "pre-wrap" }}>{profile.nutrition}</p></>}
       </section>
     );
@@ -77,12 +78,53 @@ export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p:
         </div>
       ))}
       <button type="button" className="linkbtn" onClick={() => set("supplements", [...p.supplements, { name: "", dose: "", timing: "", since: new Date().toISOString().slice(0, 10) }])}>+ Agregar suplemento</button>
+      <h3 className="sub">Energía diaria</h3>
+      <label className="field">Nivel de actividad<select id="pf-activity" value={p.activity || ""} onChange={(e) => set("activity", (e.target.value || null) as any)}>
+        <option value="">Según días por semana{activityOf({ ...p, activity: null }) ? ` (${ACTIVITIES.find((a) => a[0] === activityOf({ ...p, activity: null }))?.[1].split(" (")[0].toLowerCase()})` : ""}</option>
+        {ACTIVITIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+      <div className="field">Objetivo de calorías
+        <div className="chips">{ENERGY_GOALS.map(([k, l]) => <button key={k} type="button" className={p.energy_goal === k ? "on" : ""} onClick={() => set("energy_goal", p.energy_goal === k ? null : k)}>{l.split(" (")[0]}</button>)}</div>
+        {p.energy_goal && <span className="meta">{ENERGY_GOALS.find((g) => g[0] === p.energy_goal)?.[4]}</span>}
+      </div>
+      <div className="grid2">
+        <label className="field">kcal indicadas por tu nutricionista<input id="pf-kcal" inputMode="numeric" placeholder="Opcional" value={p.kcal_target ?? ""} onChange={(e) => set("kcal_target", parseNum(e.target.value) ? Math.round(parseNum(e.target.value)!) : null)} /></label>
+        <label className="field">Proteína indicada (g/día)<input id="pf-prot" inputMode="numeric" placeholder="Opcional" value={p.protein_target ?? ""} onChange={(e) => set("protein_target", parseNum(e.target.value) ? Math.round(parseNum(e.target.value)!) : null)} /></label>
+      </div>
       <label className="field">Alimentación<textarea id="pf-food" rows={4} value={p.nutrition} onChange={(e) => set("nutrition", e.target.value)} /></label>
       <div className="grid2">
         <button type="button" className="big ghost" onClick={() => { setP(profile); setEdit(false); }}>Cancelar</button>
         <button type="submit" className="big" disabled={busy}>{busy ? "Guardando…" : "Guardar perfil"}</button>
       </div>
     </form>
+  );
+}
+
+/* ---------------- Energía diaria ---------------- */
+function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void }) {
+  const e = energy(profile);
+  if (!e) return null;
+  const n = (x: number) => x.toLocaleString("es-CL");
+  if (!e.goal && !e.targetFromPro) return (
+    <>
+      <h3 className="sub">Energía diaria</h3>
+      <p className="how">Gastas cerca de <b>{n(e.tdee)} kcal</b> al día. Elige un objetivo de calorías para ver tu meta.</p>
+      <button type="button" className="linkbtn" onClick={onEdit}>Elegir objetivo</button>
+    </>
+  );
+  return (
+    <>
+      <h3 className="sub">Energía diaria{e.goal ? ` · ${e.goal[1].split(" (")[0].toLowerCase()}` : ""}</h3>
+      <div className="stats" style={{ marginTop: 0 }}>
+        <div className="stat"><div className="v num">{n(e.target!)}</div><div className="k">kcal meta</div></div>
+        <div className="stat"><div className="v num">{e.protein}</div><div className="k">g proteína</div></div>
+        <div className="stat"><div className="v num">{n(e.tdee)}</div><div className="k">kcal gasto</div></div>
+      </div>
+      <p className="meta">
+        {e.targetFromPro ? "Meta indicada por tu nutricionista. " : `Gasto estimado ${e.delta! > 0 ? "+" : e.delta! < 0 ? "−" : "±"} ${Math.abs(e.delta!)} kcal${e.floored ? " (ajustada para no bajar de tu metabolismo basal)" : ""}. `}
+        Basal {n(e.bmr)} kcal · actividad {ACTIVITIES.find((a) => a[0] === e.activity)?.[1].split(" (")[0].toLowerCase() || "moderada"}{e.activityGuessed ? " (según tus días por semana)" : ""}.
+        {" "}Es una estimación: si en 3 a 4 semanas el peso o las medidas no van en la dirección que buscas, ajusta ±150 kcal o consulta en tu próximo control.
+      </p>
+    </>
   );
 }
 

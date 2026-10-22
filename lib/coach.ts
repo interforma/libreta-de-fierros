@@ -2,7 +2,7 @@
 // Los números se calculan aquí y se le pasan a Claude ya resueltos, para que el texto se apoye en hechos y no invente cifras.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { bmi, monthsSince, GOALS, type Profile } from "@/lib/health";
+import { bmi, energy, monthsSince, GOALS, EMPTY_PROFILE, type Profile } from "@/lib/health";
 import { fmtNum, toKg, toLb, type Unit } from "@/lib/logic";
 
 export const MODEL_FAST = process.env.ANTHROPIC_MODEL_FAST || "claude-haiku-5-5";
@@ -53,7 +53,14 @@ export function profileLines(prof: Partial<Profile>) {
   return [
     `PERFIL: ${prof.sex || "sexo no indicado"}, ${prof.age ?? "?"} años, ${prof.weight_kg ?? "?"} kg${b ? ` (IMC ${b.toFixed(1)})` : ""}. ${prof.days_per_week ?? "?"} días por semana, hace ${monthsSince(prof.gym_since ?? null) ?? "?"} meses en el gimnasio.`,
     `Trayectoria: ${prof.sport_history || "no indicada"}. Objetivo: ${GOALS.find((g) => g[0] === prof.goal)?.[1] || "no indicado"}. Condiciones: ${prof.conditions || "ninguna indicada"}.`,
-  ].join("\n");
+    energyLine(prof),
+  ].filter(Boolean).join("\n");
+}
+
+function energyLine(prof: Partial<Profile>) {
+  const e = energy({ ...EMPTY_PROFILE, ...prof } as Profile);
+  if (!e || !e.goal) return "";
+  return `ENERGÍA: objetivo ${e.goal[1].toLowerCase()}. Meta ${e.target} kcal/día${e.targetFromPro ? " (indicada por su nutricionista)" : ` (cálculo: gasto estimado ${e.tdee} kcal)`}, proteína ${e.protein} g/día${e.proteinFromPro ? " (indicada por su nutricionista)" : ""}. Son estimaciones; no las cambies ni des otras cifras.`;
 }
 
 /** Peso en la unidad de la máquina, con la equivalencia. */

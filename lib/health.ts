@@ -14,15 +14,67 @@ export type Profile = {
   conditions: string;
   supplements: Supplement[];
   nutrition: string;
+  activity: "baja" | "moderada" | "alta" | "muy_alta" | null;
+  energy_goal: "deficit" | "recomposicion" | "mantencion" | "superavit" | null;
+  kcal_target: number | null;   // indicado por un profesional; reemplaza el cálculo
+  protein_target: number | null;
 };
 export const EMPTY_PROFILE: Profile = {
   name: "", sex: null, age: null, height_cm: null, weight_kg: null, sport_history: "", gym_since: null,
   days_per_week: null, goal: null, conditions: "", supplements: [], nutrition: "",
+  activity: null, energy_goal: null, kcal_target: null, protein_target: null,
 };
 export const GOALS: [Profile["goal"], string][] = [
   ["musculo", "Ganar músculo"], ["fuerza", "Ganar fuerza"], ["salud", "Salud y movilidad"],
   ["rendimiento", "Rendimiento deportivo"], ["bajar_grasa", "Bajar grasa"],
 ];
+
+/* ---------------- Balance energético ---------------- */
+export const ACTIVITIES: [NonNullable<Profile["activity"]>, string, number][] = [
+  ["baja", "Baja (1 a 3 días de ejercicio)", 1.375],
+  ["moderada", "Moderada (3 a 5 días)", 1.55],
+  ["alta", "Alta (6 a 7 días)", 1.725],
+  ["muy_alta", "Muy alta (doble sesión o fondo largo)", 1.9],
+];
+// [clave, nombre, ajuste de kcal sobre el gasto, g de proteína por kg, explicación]
+export const ENERGY_GOALS: [NonNullable<Profile["energy_goal"]>, string, number, number, string][] = [
+  ["deficit", "Déficit (bajar grasa)", -400, 2.0, "Bajar grasa sin perder músculo: déficit moderado y proteína alta."],
+  ["recomposicion", "Recomposición (bajar grasa y ganar músculo)", -150, 2.0, "Déficit leve con proteína alta y entrenamiento de fuerza: el peso cambia poco, pero cambia la composición."],
+  ["mantencion", "Mantención", 0, 1.6, "Comer lo que gastas."],
+  ["superavit", "Superávit (ganar músculo)", 250, 1.8, "Superávit leve para ganar músculo con poca grasa."],
+];
+const r50 = (n: number) => Math.round(n / 50) * 50;
+const r5 = (n: number) => Math.round(n / 5) * 5;
+
+/** Actividad elegida, o la que se deduce de los días por semana. */
+export function activityOf(p: Pick<Profile, "activity" | "days_per_week">) {
+  if (p.activity) return p.activity;
+  const d = p.days_per_week;
+  if (!d) return null;
+  return d >= 6 ? "alta" : d >= 4 ? "moderada" : "baja";
+}
+
+/**
+ * Metabolismo basal (Mifflin-St Jeor), gasto diario y meta según el objetivo.
+ * La meta nunca baja del metabolismo basal. Si hay cifras del nutricionista, mandan esas.
+ */
+export function energy(p: Profile) {
+  if (!p.weight_kg || !p.height_cm || !p.age) return null;
+  const sexAdj = p.sex === "hombre" ? 5 : p.sex === "mujer" ? -161 : -78;
+  const bmr = 10 * p.weight_kg + 6.25 * p.height_cm - 5 * p.age + sexAdj;
+  const act = activityOf(p);
+  const factor = ACTIVITIES.find((a) => a[0] === act)?.[2] ?? 1.55;
+  const tdee = bmr * factor;
+  const goal = ENERGY_GOALS.find((g) => g[0] === p.energy_goal) ?? null;
+  const calc = goal ? Math.max(bmr, tdee + goal[2]) : null;
+  const protein = goal ? r5(p.weight_kg * goal[3]) : r5(p.weight_kg * 1.6);
+  return {
+    bmr: r50(bmr), tdee: r50(tdee), activity: act, activityGuessed: !p.activity && !!act,
+    goal, target: p.kcal_target ?? (calc != null ? r50(calc) : null), targetFromPro: p.kcal_target != null,
+    delta: goal ? goal[2] : null, floored: calc != null && p.kcal_target == null && calc === bmr,
+    protein: p.protein_target ?? protein, proteinFromPro: p.protein_target != null,
+  };
+}
 
 export type Discomfort = {
   id: string;
