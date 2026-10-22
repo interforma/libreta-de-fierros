@@ -222,12 +222,19 @@ function MealCoach({ profile, target, protein, onSave }: { profile: Profile; tar
     setBusy(null);
   }
 
+  // El botón principal siempre hace lo que dice: si ya hay un día vigente lo muestra; si no, pide uno nuevo.
+  const dayReady = meal?.mode === "dia" && !stale;
+  const when = (m: MealAi) => `${shortDate(m.at.slice(0, 10))}, ${new Date(m.at).toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" })}`;
+  const kind = (m: MealAi) => (m.mode === "dia" ? "Día de comidas" : "Revisión de tu plan");
   if (!open && !busy) return (
-    <button type="button" className="askbtn" onClick={() => (meal ? setOpen(true) : ask("dia"))}>
-      <Punto expr="atento" size={30} />
-      <span><b>{meal ? "Ver sugerencia de comidas" : "Sugerir un día de comidas"}</b>
-        <small>{meal ? `${meal.mode === "dia" ? "Día de ejemplo" : "Revisión de tu plan"} · ${shortDate(meal.at.slice(0, 10))}` : `Con tu meta de ${target.toLocaleString("es-CL")} kcal y ${protein} g de proteína`}</small></span>
-    </button>
+    <div className="mealbtns">
+      <button type="button" className="askbtn" onClick={() => (dayReady ? setOpen(true) : ask("dia"))}>
+        <Punto expr="atento" size={30} />
+        <span><b>{dayReady ? "Ver tu día de comidas" : "Sugerir un día de comidas"}</b>
+          <small>{dayReady ? `Armado el ${when(meal!)}` : `Con tu meta de ${target.toLocaleString("es-CL")} kcal y ${protein} g de proteína`}</small></span>
+      </button>
+      {meal && !dayReady && <button type="button" className="linkbtn" onClick={() => setOpen(true)}>Ver la última respuesta ({kind(meal).toLowerCase()})</button>}
+    </div>
   );
 
   return (
@@ -237,6 +244,7 @@ function MealCoach({ profile, target, protein, onSave }: { profile: Profile; tar
         <div className="ma"><Punto expr="piensa" size={28} alive /><p className="meta">{busy === "dia" ? "Armando un día de comidas…" : "Revisando tu plan…"}</p></div>
       ) : meal && (
         <>
+          <div className="eguide-k">{kind(meal)} · {when(meal)}</div>
           <div className="ma"><Punto expr="atento" size={28} /><p style={{ whiteSpace: "pre-wrap" }}>{meal.text}</p></div>
           {stale && <p className="meta">Tu meta cambió desde esta sugerencia. Pide una nueva para ajustarla.</p>}
           {meal.mode === "dia" && !stale && (adopted

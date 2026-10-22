@@ -572,3 +572,4 @@ img{max-width:100%}
 .eguide.plain{background:var(--field);border-color:var(--line-strong)}
 .eguide.plain summary span{display:flex;flex-direction:column;gap:2px;padding:8px 0}
 .eguide.plain summary small{font-size:.88rem;font-weight:500;color:var(--muted)}
+.mealbtns{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
