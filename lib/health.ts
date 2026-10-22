@@ -68,6 +68,9 @@ export function suggestedEnergyGoal(p: Pick<Profile, "goal" | "height_cm" | "wei
   }
 }
 
+/** Factor de actividad según los días de entrenamiento por semana (1 a 7). */
+export const daysFactor = (d: number) => Math.round((1.28 + 0.06 * Math.min(7, Math.max(1, d))) * 100) / 100;
+
 /** Actividad elegida, o la que se deduce de los días por semana. */
 export function activityOf(p: Pick<Profile, "activity" | "days_per_week">) {
   if (p.activity) return p.activity;
@@ -85,13 +88,18 @@ export function energy(p: Profile) {
   const sexAdj = p.sex === "hombre" ? 5 : p.sex === "mujer" ? -161 : -78;
   const bmr = 10 * p.weight_kg + 6.25 * p.height_cm - 5 * p.age + sexAdj;
   const act = activityOf(p);
-  const factor = ACTIVITIES.find((a) => a[0] === act)?.[2] ?? 1.55;
+  // Sin nivel elegido, el factor sube con cada día de entrenamiento (3 días ≈ 1,46; 6 días ≈ 1,64),
+  // para que 6 días seguidos no cuenten igual que 3.
+  const factor = p.activity ? ACTIVITIES.find((a) => a[0] === p.activity)![2]
+    : p.days_per_week ? daysFactor(p.days_per_week) : 1.55;
   const tdee = bmr * factor;
   const goal = ENERGY_GOALS.find((g) => g[0] === p.energy_goal) ?? null;
   const calc = goal ? Math.max(bmr, tdee + goal[2]) : null;
   const protein = goal ? r5(p.weight_kg * goal[3]) : r5(p.weight_kg * 1.6);
   return {
     bmr: r50(bmr), tdee: r50(tdee), activity: act, activityGuessed: !p.activity && !!act,
+    activityLabel: p.activity ? ACTIVITIES.find((a) => a[0] === p.activity)![1].split(" (")[0].toLowerCase()
+      : p.days_per_week ? `${p.days_per_week} ${p.days_per_week === 1 ? "día" : "días"} por semana` : "moderada",
     goal, target: p.kcal_target ?? (calc != null ? r50(calc) : null), targetFromPro: p.kcal_target != null,
     delta: goal ? goal[2] : null, floored: calc != null && p.kcal_target == null && calc === bmr,
     protein: p.protein_target ?? protein, proteinFromPro: p.protein_target != null,

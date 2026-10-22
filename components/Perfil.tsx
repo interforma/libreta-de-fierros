@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { ACTIVITIES, AREAS, ENERGY_GOALS, GOALS, MOMENTS, activityOf, bmi, energy, monthsSince, suggestedEnergyGoal, redFlag, type Discomfort, type MealAi, type Profile, type Supplement } from "@/lib/health";
+import { ACTIVITIES, AREAS, ENERGY_GOALS, GOALS, MOMENTS, bmi, energy, monthsSince, suggestedEnergyGoal, redFlag, type Discomfort, type MealAi, type Profile, type Supplement } from "@/lib/health";
 import { fmtNum, parseNum, shortDate, type Machine } from "@/lib/logic";
 import { callCoach } from "@/lib/coachClient";
 import Punto from "@/components/Punto";
@@ -82,7 +82,7 @@ export function ProfileCard({ profile, onSave }: { profile: Profile; onSave: (p:
       <button type="button" className="linkbtn" onClick={() => set("supplements", [...p.supplements, { name: "", dose: "", timing: "", since: new Date().toISOString().slice(0, 10) }])}>+ Agregar suplemento</button>
       <h3 className="sub">Energía diaria</h3>
       <label className="field">Nivel de actividad<select id="pf-activity" value={p.activity || ""} onChange={(e) => set("activity", (e.target.value || null) as any)}>
-        <option value="">Según días por semana{activityOf({ ...p, activity: null }) ? ` (${ACTIVITIES.find((a) => a[0] === activityOf({ ...p, activity: null }))?.[1].split(" (")[0].toLowerCase()})` : ""}</option>
+        <option value="">{p.days_per_week ? `Según mis ${p.days_per_week} días por semana (recomendado)` : "Según días por semana"}</option>
         {ACTIVITIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
       <div className="field">Objetivo de calorías
         {(() => {
@@ -137,7 +137,7 @@ function EnergyBlock({ profile, onEdit }: { profile: Profile; onEdit: () => void
       </div>
       <p className="meta">
         {e.targetFromPro ? "Meta indicada por tu nutricionista. " : `Gasto estimado ${e.delta! > 0 ? "+" : e.delta! < 0 ? "−" : "±"} ${Math.abs(e.delta!)} kcal${e.floored ? " (ajustada para no bajar de tu metabolismo basal)" : ""}. `}
-        Basal {n(e.bmr)} kcal · actividad {ACTIVITIES.find((a) => a[0] === e.activity)?.[1].split(" (")[0].toLowerCase() || "moderada"}{e.activityGuessed ? " (según tus días por semana)" : ""}.
+        Basal {n(e.bmr)} kcal · actividad: {e.activityLabel}.
         {" "}Es una estimación: si en 3 a 4 semanas el peso o las medidas no van en la dirección que buscas, ajusta ±150 kcal o consulta en tu próximo control.
       </p>
       <MealCoach profile={profile} target={e.target!} protein={e.protein} />
