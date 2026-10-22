@@ -8,6 +8,7 @@ export type Machine = {
   name: string;
   muscle_group: string;
   how_to: string;
+  alternative?: string | null; // qué hacer si está ocupada o no se entiende
   unit: Unit;
   settings: string;
   photo_path: string | null;

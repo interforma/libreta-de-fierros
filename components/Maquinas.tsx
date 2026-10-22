@@ -65,7 +65,7 @@ export function PhotoSheet({ uid, machines, onClose, onSaved }: {
       while (machines[slug]) slug = `${slugify(name)}_${n++}`;
       const photo_path = await uploadMachinePhoto(uid, slug, photo.blob);
       const row = { slug, name: name.trim(), muscle_group: seen.grupo, how_to: seen.como_se_usa, unit: "lb", photo_path, guide: seen.guia || null, guide_at: seen.guia ? new Date().toISOString() : null, source: "foto" };
-      const { data, error } = await supabase.from("machines").insert(row).select("slug,name,muscle_group,how_to,unit,settings,photo_path,guide,guide_at,source").single();
+      const { data, error } = await supabase.from("machines").insert(row).select("slug,name,muscle_group,how_to,alternative,unit,settings,photo_path,guide,guide_at,source").single();
       if (error) throw new Error("No se pudo agregar al catálogo.");
       onSaved(data as Machine, true); setDone(`${name.trim()} quedó en tu catálogo, con tu foto y su guía.`);
     } catch (e: any) { setErr(e.message); }
@@ -160,6 +160,7 @@ export function MachineCatalog({ uid, machines, photoUrl, onGuide, onSaved, onAd
           </summary>
           <div className="body">
             <p className="how">{m.how_to}</p>
+            {m.alternative && <p className="alt"><b>Alternativa</b>{m.alternative}</p>}
             <label className="big ghost filebtn">{busy === m.slug ? "Guardando foto…" : m.photo_path ? "Cambiar la foto" : "Poner una foto de mi gimnasio"}
               <input type="file" accept="image/*" capture="environment" hidden onChange={(e) => changePhoto(m, e.target.files?.[0])} /></label>
             <GuidePanel machine={m} onGuide={onGuide} />

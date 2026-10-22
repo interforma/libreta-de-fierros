@@ -278,7 +278,7 @@ function Logbook({ uid }: { uid: string }) {
       await supabase.rpc("seed_defaults");
       await supabase.rpc("seed_block_one");
       const [m, r, s, b] = await Promise.all([
-        supabase.from("machines").select("slug,name,muscle_group,how_to,unit,settings,photo_path,guide,guide_at,source"),
+        supabase.from("machines").select("slug,name,muscle_group,how_to,alternative,unit,settings,photo_path,guide,guide_at,source"),
         supabase.from("routines").select("slug,name,type,weekdays,duration_min,items,position,block_id").order("position"),
         supabase.from("sessions").select("date,routine_slug,items,client_updated_at").order("date", { ascending: false }).limit(400),
         supabase.from("blocks").select("id,name,start_date,weeks,deload_week,focus,balance").order("start_date"),
@@ -678,6 +678,7 @@ function Logbook({ uid }: { uid: string }) {
             )}
             {def.note && <p className="tip">{def.note}</p>}
             <p className="how">{m.how_to}</p>
+            {m.alternative && <p className="alt"><b>Alternativa</b>{m.alternative}</p>}
             <details className="photo-toggle">
               <summary>Ver foto de la máquina</summary>
               <img className="photo" src={img} alt={m.name} />
@@ -1262,7 +1263,7 @@ function Logbook({ uid }: { uid: string }) {
                   : wasDone ? <span className="badge ok">Hecho</span> : isToday ? <span className="badge today">Hoy</span> : <span className="meta" aria-hidden="true">{r ? (isOpen ? "▴" : "▾") : ""}</span>}
               </button>
               {isOpen && r && <>
-                <ol className="plist">{r.items.map((x, i) => <li key={i}>{x.label || machines[x.m]?.name} <span>· {targetText(x)}</span>{x.note && <em>{x.note}</em>}</li>)}</ol>
+                <ol className="plist">{r.items.map((x, i) => <li key={i}>{x.label || machines[x.m]?.name} <span>· {targetText(x)}</span>{x.note && <em>{x.note}</em>}{x.k !== "cardio" && machines[x.m]?.alternative && <em>Alternativa: {machines[x.m]!.alternative}</em>}</li>)}</ol>
                 {canDo && <div style={{ padding: "0 12px 12px" }}><button type="button" className="big ghost" onClick={() => chooseRoutine(r.slug)}>Hacer esta rutina hoy</button></div>}
               </>}
             </section>

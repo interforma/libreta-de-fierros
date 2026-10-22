@@ -6,7 +6,7 @@ import { profileLines } from "@/lib/coach";
 
 export async function machineContext(db: SupabaseClient, slug: string) {
   const [{ data: m }, { data: p }, { data: dis }, { data: all }] = await Promise.all([
-    db.from("machines").select("slug,name,muscle_group,how_to,settings,unit,guide").eq("slug", slug).maybeSingle(),
+    db.from("machines").select("slug,name,muscle_group,how_to,alternative,settings,unit,guide").eq("slug", slug).maybeSingle(),
     db.from("profiles").select("*").maybeSingle(),
     db.from("discomforts").select("area,side,intensity,machine_slug,note").eq("resolved", false).limit(5),
     db.from("machines").select("slug,name,muscle_group"),
@@ -16,6 +16,7 @@ export async function machineContext(db: SupabaseClient, slug: string) {
   const text = [
     profileLines((p || {}) as any),
     `EJERCICIO: ${m.name} (${m.muscle_group}). Descripción del catálogo: ${m.how_to || "sin descripción"}.`,
+    m.alternative ? `ALTERNATIVA DEL CATÁLOGO (si está ocupada o no la entiende): ${m.alternative}` : "",
     m.settings ? `AJUSTES QUE ANOTÓ EL USUARIO: ${m.settings}.` : "",
     (dis || []).length ? `MOLESTIAS ACTIVAS: ${(dis || []).map((d: any) => `${d.area}${d.side ? " " + d.side : ""} ${d.intensity}/10${d.machine_slug === slug ? " (en este ejercicio)" : ""}`).join("; ")}.` : "MOLESTIAS ACTIVAS: ninguna.",
     same.length ? `OTROS EJERCICIOS DEL MISMO GRUPO EN SU CATÁLOGO: ${same.map((x: any) => x.name).join("; ")}.` : "",

@@ -253,6 +253,8 @@ img{max-width:100%}
 .blk{font-size:.95rem;color:var(--muted);margin-top:4px}
 .blk-next{display:inline-block;margin-top:8px;padding:6px 12px;border-radius:13px;background:#CCE2ED;color:#281F18;font-size:.92rem;font-weight:700}
 .tip{font-size:1rem;margin:0;padding:12px 14px;border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:12px;color:var(--ink);line-height:1.5}
+.alt{font-size:1rem;margin:0;line-height:1.5;color:var(--ink);padding-left:12px;border-left:3px solid var(--accent-line)}
+.alt b{display:block;font-size:.85rem;text-transform:uppercase;letter-spacing:.04em;color:var(--accent-text)}
 .plist li em{display:block;font-style:normal;font-size:.88rem;color:var(--muted)}
 .picker.blocks{flex-direction:row}
 .picker.blocks button{flex:1;flex-direction:column;align-items:flex-start;gap:2px;min-height:60px}
