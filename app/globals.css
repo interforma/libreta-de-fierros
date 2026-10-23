@@ -439,6 +439,11 @@ img{max-width:100%}
 .donehero.cur .next{background:color-mix(in srgb,var(--plate-ink) 8%,transparent);border-color:color-mix(in srgb,var(--plate-ink) 16%,transparent)}
 .donehero.cur .next .eyebrow{color:var(--plate-num)}
 .donehero.cur .next b{color:var(--plate-ink)}
+.donehero .stats{margin-top:10px;width:100%;display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:10px}
+.donehero .stats div{display:flex;flex-direction:column;align-items:center;gap:2px;padding:12px 8px;border-radius:14px;background:color-mix(in srgb,var(--plate-ink) 8%,transparent);border:1px solid color-mix(in srgb,var(--plate-ink) 16%,transparent)}
+.donehero .stats b{font-family:var(--display);font-size:2.4rem;line-height:1.05;letter-spacing:-.02em;color:var(--plate-ink)}
+.donehero .stats span{font-size:1.05rem;font-weight:600;color:var(--plate-sub)}
+.donehero.cur .meta{font-size:1.15rem;font-weight:600}
 .donehero .review{margin-top:12px;width:100%;min-height:52px;border-radius:26px;background:transparent;border:1.5px solid color-mix(in srgb,var(--plate-ink) 40%,transparent);color:var(--plate-ink);font-weight:700;font-size:1rem}
 .confetti{position:absolute;inset:0;pointer-events:none}
 .confetti i{position:absolute;width:10px;height:10px;border-radius:2px;background:var(--accent);opacity:.85;animation:cf-in .6s cubic-bezier(.16,1,.3,1) both}

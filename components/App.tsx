@@ -900,7 +900,13 @@ function Logbook({ uid }: { uid: string }) {
               );
             })()}
             <h2>Listo por hoy</h2>
-            <p className="meta num">{r.name}{mins && mins < 300 ? ` · ${mins} min` : ""}{kcalTxt}</p>
+            <p className="meta">{r.name}</p>
+            {(mins && mins < 300 || en.kcal) && (
+              <div className="stats">
+                {mins && mins < 300 && <div><b className="num">{mins}</b><span>minutos</span></div>}
+                {en.kcal && <div><b className="num">{en.kcal.toLocaleString("es-CL")}</b><span>kcal aprox.</span></div>}
+              </div>
+            )}
             <div className="next">
               <span className="eyebrow">Mañana · {DAYS[tmr.getDay()]}</span>
               <b>{nr ? nr.name : "Descanso"}</b>
