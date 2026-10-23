@@ -6,6 +6,11 @@
 - El peso se guarda siempre en **kg y lb** (`setW`), y la unidad se recuerda por máquina (`machines.unit`). El progreso se calcula en kg.
 - Cambios de esquema: nueva migración en `supabase/migrations/` y aplicarla al proyecto. Toda tabla nueva lleva RLS por `user_id = auth.uid()`.
 - Diseñado para una mano en el gimnasio: botones de al menos 44 px y nada que obligue a escribir si un + o − sirve.
+- **Regla de legibilidad (prioridad diferenciadora: la app es para adultos mayores también).** Base 17 px (`html`), con Normal/Grande/Muy grande vía `data-size`; usar siempre `rem` para que todo escale.
+  - El dato más importante de cada pantalla va como cifra grande (≥ 2 rem, tipografía display) con su etiqueta debajo, no dentro de una línea de texto. Ejemplo: minutos y kcal en "Listo por hoy" (`.donehero .stats`).
+  - Mínimos: datos y botones de acción ≥ 1 rem; texto secundario ≥ 0,92 rem; etiquetas en mayúscula (eyebrow) ≥ 0,85 rem. Nada bajo 0,82 rem.
+  - Contraste: texto secundario con `--muted` / `--plate-sub` (≥ 4,5:1, hoy sobre 6:1). No usar grises más claros ni opacidad para bajar el texto.
+  - Antes de publicar un cambio visual, revisarlo en 390 px de ancho, en tema claro y oscuro, y con letra "Muy grande".
 - En `sessions.items`, las claves que empiezan con `__` no son ejercicios: `__t0`/`__t1` (inicio y término), `__uso` (contadores de fricción), `__cierre` (respuesta a "¿Algo te costó hoy?"), `__resumen` (comentario del entrenador), `__suplementos`.
 - IA del entrenador en `lib/coach.ts` y `app/api/{resumen,balance,orientacion}`: los números se calculan en el servidor y Claude solo redacta. Modelo rápido `ANTHROPIC_MODEL_FAST` (por defecto Haiku) para mensajes cortos.
 - Criterio de producto: la app propone o avisa en el momento justo; no agrega datos que nadie pidió.
