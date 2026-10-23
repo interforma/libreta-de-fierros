@@ -5,6 +5,7 @@ import type { Session as AuthSession } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { EMPTY_PROFILE, type Discomfort, type Profile } from "@/lib/health";
 import { CheckupList, DiscomfortList, DiscomfortSheet, ProfileCard, type Checkup } from "@/components/Perfil";
+import Comida from "@/components/Comida";
 import { sessionEnergy,
   DAYS, MONTHS, FEELS, FOOD, feelName, fmtNum, fmtW, freshItem, itemDone, keyOf, lastFor, metricOf, mmss,
   parseKey, parseNum, routineForDay, setW, shortDate, targetText, toKg, toLb, unitOf, wIn,
@@ -185,7 +186,7 @@ function Logbook({ uid }: { uid: string }) {
   const [todayKey, setTodayKey] = useState(() => keyOf(new Date()));
   const [today, setToday] = useState<Session | null>(null);
   const todayRef = useRef<Session | null>(null);
-  const [tab, setTab] = useState<"hoy" | "prog" | "plan" | "perfil">("hoy");
+  const [tab, setTab] = useState<"hoy" | "comida" | "prog" | "plan" | "perfil">("hoy");
   const [profile, setProfile] = useState<Profile>(() => lsGet(`lf.${uid}.profile`) || EMPTY_PROFILE);
   const [discomforts, setDiscomforts] = useState<Discomfort[]>(() => lsGet(`lf.${uid}.discomforts`) || []);
   const [sheet, setSheet] = useState<string | null | undefined>(undefined); // undefined = cerrado, null = sin ejercicio
@@ -1288,7 +1289,7 @@ function Logbook({ uid }: { uid: string }) {
 
   return (
     <>
-      <div className="wrap">{tab === "hoy" ? Hoy() : tab === "prog" ? Progreso() : tab === "plan" ? Plan() : PerfilView()}</div>
+      <div className="wrap">{tab === "hoy" ? Hoy() : tab === "comida" ? <Comida uid={uid} profile={profile} todayKey={todayKey} header={Header({ title: "Comida", eyebrow: "Lo que comes" })} onGoProfile={() => { setTab("perfil"); window.scrollTo(0, 0); }} /> : tab === "prog" ? Progreso() : tab === "plan" ? Plan() : PerfilView()}</div>
       {photoSheet && <PhotoSheet uid={uid} machines={machines} onClose={() => setPhotoSheet(false)} onSaved={(m) => putMachine(m)} />}
       {sheet !== undefined && (
         <DiscomfortSheet machines={machines} initialMachine={sheet}
@@ -1307,6 +1308,7 @@ function Logbook({ uid }: { uid: string }) {
         {!work && rest && <RestBar rest={rest} onClose={closeRest} onPlus={() => setRest({ ...rest, end: Math.max(rest.end, Date.now()) + 30000, total: rest.total + 30 })} />}
         <nav className="tabs" aria-label="Secciones">
           {([["hoy", "Hoy", <path key="a" d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />],
+             ["comida", "Comida", <g key="e"><path d="M7 3v8M4.5 3v5a2.5 2.5 0 0 0 5 0V3M7 11v10" /><path d="M17 21V3c-2.2 0-3.5 2.5-3.5 6s1.3 4 3.5 4" /></g>],
              ["prog", "Progreso", <path key="b" d="M3 17l6-6 4 4 8-8M15 7h6v6" />],
              ["plan", "Plan", <g key="c"><rect x="3" y="4.5" width="18" height="16" rx="2" /><path d="M3 9.5h18M8 2.5v4M16 2.5v4" /></g>],
              ["perfil", "Perfil", <g key="d"><circle cx="12" cy="8" r="4" /><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6" /></g>]] as const).map(([k, l, icon]) => (

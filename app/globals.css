@@ -130,7 +130,8 @@ h1{font-family:var(--display);font-weight:600;font-size:1.95rem;line-height:1.1;
 .timer.end .t{color:var(--good-ink)}
 .timer.end button{color:var(--good-ink);border-color:var(--good-ink)}
 .timer.end button.go{background:var(--good-ink);color:var(--good)}
-.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-width:560px;margin:0 auto;padding:8px 10px 10px}
+.tabs{display:flex;gap:4px;max-width:560px;margin:0 auto;padding:8px 8px 10px}
+.tabs button{flex:1 1 auto;min-width:0;padding-inline:4px}
 .tabs button{padding:8px 0;border-radius:14px;font-size:.95rem;font-weight:600;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;min-height:56px}
 .tabs button svg{width:26px;height:26px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tabs button[aria-current="page"]{color:var(--ink);background:var(--accent-soft);font-weight:700}
@@ -580,3 +581,56 @@ img{max-width:100%}
 .eguide.plain summary span{display:flex;flex-direction:column;gap:2px;padding:8px 0}
 .eguide.plain summary small{font-size:.92rem;font-weight:500;color:var(--muted)}
 .mealbtns{display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+
+/* ---------- Comida ---------- */
+.cday{display:grid;grid-template-columns:56px 1fr 56px;align-items:center;gap:8px;margin-top:14px}
+.cday button{height:56px;border-radius:14px;border:1.5px solid var(--line-strong);font-size:1.6rem;font-weight:600;color:var(--ink);background:var(--surface)}
+.cday button:disabled{opacity:.35}
+.cday b{display:flex;flex-direction:column;align-items:center;font-family:var(--display);font-size:1.4rem;line-height:1.15}
+.cday b .meta{font-family:var(--body);font-size:.95rem;font-weight:600}
+.cplate{margin-top:12px;background:var(--plate);color:var(--plate-ink);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:4px}
+.cplate-k{font-size:1rem;font-weight:600;color:var(--plate-sub)}
+.cplate-v{font-family:var(--display);font-size:3rem;font-weight:700;line-height:1.05;color:var(--plate-num);letter-spacing:-.02em}
+.cplate-v small{font-family:var(--body);font-size:1.1rem;font-weight:600;color:var(--plate-ink);letter-spacing:0}
+.cbar{height:12px;border-radius:99px;background:color-mix(in srgb,var(--plate-ink) 16%,transparent);overflow:hidden;margin:8px 0 4px}
+.cbar i{display:block;height:100%;border-radius:99px;background:var(--plate-num)}
+.ctiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.ctiles div{display:flex;flex-direction:column;gap:2px;padding:12px;border-radius:14px;background:color-mix(in srgb,var(--plate-ink) 8%,transparent);border:1px solid color-mix(in srgb,var(--plate-ink) 16%,transparent)}
+.ctiles b{font-family:var(--display);font-size:2rem;line-height:1.05;color:var(--plate-ink)}
+.ctiles span{font-size:1rem;font-weight:600;color:var(--plate-sub);line-height:1.3}
+.ctiles small{font-size:.92rem;color:var(--plate-sub)}
+.ctiles.flat div{background:var(--surface);border-color:var(--line)}
+.ctiles.flat b{color:var(--ink)}
+.ctiles.flat span,.ctiles.flat small{color:var(--muted)}
+.cleft{margin:10px 0 0;font-size:1.1rem;font-weight:600;color:var(--plate-ink)}
+.cadd{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.cadd .big{display:flex;align-items:center;justify-content:center;gap:10px}
+.cadd svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
+.cbusy{display:flex;align-items:center;gap:12px;margin-top:12px;font-size:1.05rem;font-weight:600}
+.csub{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-family:var(--display);font-size:1.15rem;font-weight:600;margin:20px 2px 0}
+.csub span{font-family:var(--body);font-size:.95rem;font-weight:600;color:var(--muted)}
+.chab{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
+.chab button{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-height:84px;padding:12px;border-radius:14px;border:1.5px solid var(--line-strong);background:var(--surface);color:var(--ink);text-align:left}
+.chab button:active{background:var(--accent-soft)}
+.chab b{font-size:1.02rem;line-height:1.25}
+.chab span{font-size:1rem;font-weight:700}
+.chab small{font-size:.92rem;color:var(--muted)}
+.cslot{padding:12px 14px;display:flex;flex-direction:column}
+.cslot-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-bottom:6px}
+.cslot-h b{font-family:var(--display);font-size:1.15rem}
+.cslot-h span{font-size:1rem;font-weight:700;color:var(--muted)}
+.cmeal{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:56px;padding:10px 0;border-top:1px solid var(--line);text-align:left;color:var(--ink)}
+.cmeal b{font-size:1.05rem;font-weight:600}
+.cmeal em{font-style:normal;font-size:.92rem;font-weight:700;color:var(--warn);margin-left:8px}
+.cmeal .num{font-size:1rem;color:var(--muted);font-weight:600}
+.ctag{font-size:.88rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:5px 12px;border-radius:99px;background:var(--accent-soft);color:var(--accent-text);border:1px solid var(--accent-line)}
+.ctag.etiqueta,.ctag.habitual{background:var(--good-soft);color:var(--good);border-color:var(--good-line)}
+.cname{font-family:var(--display);font-size:1.5rem;font-weight:600;border:1px solid transparent;border-bottom-color:var(--line-strong);background:transparent;color:var(--ink);padding:4px 2px;width:100%;min-width:0}
+.cname:focus{outline:none;border-bottom-color:var(--accent)}
+.cqty{display:block;font-family:var(--display);font-size:1.7rem;font-weight:600;line-height:1.1}
+.ctext{border:1px solid var(--line-strong);border-radius:12px;background:var(--field);color:var(--ink);font:inherit;font-size:1.05rem;padding:12px;width:100%;min-width:0;resize:vertical}
+.cswitch{width:28px;height:28px;accent-color:var(--accent);flex:none}
+.cq{background:var(--field);border:1px solid var(--accent-line);border-radius:12px;padding:12px}
+.cdanger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}
+.sheet .step{background:var(--field);border:1px solid var(--line-strong)}
+.cadd .big{padding-block:10px;line-height:1.25}
