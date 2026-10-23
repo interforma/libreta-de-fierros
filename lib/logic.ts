@@ -194,3 +194,38 @@ export function focusParts(focus: string | null | undefined): { title: string; p
     .map((x) => x[0].toUpperCase() + x.slice(1));
   return { title, points: points.slice(0, 4) };
 }
+
+/* gasto energético aproximado de la sesión
+   MET del Compendio de Actividades Físicas (Ainsworth 2011/2024): kcal = MET × kg × horas.
+   Es el gasto total durante el ejercicio (incluye el basal de ese rato). */
+const CARDIO_MET: Record<string, number> = { cinta: 6, bici: 5, remo_ergo: 6 };
+const MET_WARM = 4;     // calentamiento suave, cualquier máquina
+const MET_LOAD = 3.5;   // pesas en máquina, 8–15 reps, con descansos
+const MET_HOLD = 3.8;   // core (planchas, puente)
+const WORK_S = 45;      // una tanda de 10–15 reps
+
+export function sessionEnergy(defs: ItemDef[], items: Record<string, ItemLog>, kg: number | string | null | undefined) {
+  let min = 0, metMin = 0;
+  for (const def of defs) {
+    const it = items[def.m];
+    if (!it) continue;
+    if (def.k === "cardio") {
+      if (!it.done) continue;
+      const m = Number(it.min ?? def.min) || 0;
+      const met = def.label === "Calentamiento" ? MET_WARM : CARDIO_MET[def.m] ?? 5;
+      min += m; metMin += met * m;
+      continue;
+    }
+    const sides = def.per ? 2 : 1; // "por lado" / "por pierna"
+    for (const st of it.sets || []) {
+      const t = st.tandas || 1;
+      const n = st.done ? t : Math.min(t, st.tdone || 0);
+      if (!n) continue;
+      const work = def.k === "hold" ? (Number(st.secs ?? def.secs) || 30) * sides : WORK_S * sides;
+      const m = (n * (work + (def.rest || 60))) / 60;
+      min += m; metMin += (def.k === "hold" ? MET_HOLD : MET_LOAD) * m;
+    }
+  }
+  const w = Number(kg) || 0; // puede venir como texto desde Postgres (numeric)
+  return { min: Math.round(min), kcal: w && metMin ? Math.round((metMin * w) / 60 / 10) * 10 : null };
+}

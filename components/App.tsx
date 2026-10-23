@@ -5,7 +5,7 @@ import type { Session as AuthSession } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { EMPTY_PROFILE, type Discomfort, type Profile } from "@/lib/health";
 import { CheckupList, DiscomfortList, DiscomfortSheet, ProfileCard, type Checkup } from "@/components/Perfil";
-import {
+import { sessionEnergy,
   DAYS, MONTHS, FEELS, FOOD, feelName, fmtNum, fmtW, freshItem, itemDone, keyOf, lastFor, metricOf, mmss,
   parseKey, parseNum, routineForDay, setW, shortDate, targetText, toKg, toLb, unitOf, wIn,
   activeBlock, weekOf, blockEnd, isDeload, routinesOf, repsOf, focusParts,
@@ -828,14 +828,18 @@ function Logbook({ uid }: { uid: string }) {
     const warm = r.items.filter(isWarm), fin = r.items.filter(isFin), main = r.items.filter((x) => !isWarm(x) && !isFin(x));
     const meta = today.items as any;
     const started = r.items.some((d) => { const it = today.items[d.m]; return it?.done || it?.sets?.some((x) => x.done); });
-    const mins = meta.__t0 && meta.__t1 ? Math.round((meta.__t1 - meta.__t0) / 60000) : null;
+    const en = sessionEnergy(r.items, today.items, profile.weight_kg);
+    // El reloj parte con el primer toque del día (a veces horas antes de entrenar): si no calza con lo registrado, se usa la estimación.
+    const clock = meta.__t0 && meta.__t1 ? Math.round((meta.__t1 - meta.__t0) / 60000) : null;
+    const mins = clock && (!en.min || clock <= Math.max(en.min * 1.6, en.min + 30)) ? clock : en.min || null;
+    const kcalTxt = en.kcal ? ` · unas ${en.kcal.toLocaleString("es-CL")} kcal` : "";
     const di = FOOD[r.type].findIndex(([t]) => t === "Durante");
     const post = di >= 0 ? FOOD[r.type][di + 1] : null; // lo que va justo después de entrenar
     const complete = done === total && total > 0;
     const heroMode = complete && review !== todayKey && !picking;
     const close = complete && (
       <section className="card closecard" aria-live="polite">
-        {!heroMode && <div className="eyebrow">Sesión completa{mins && mins < 300 ? ` · ${mins} min` : ""}</div>}
+        {!heroMode && <div className="eyebrow">Sesión completa{mins && mins < 300 ? ` · ${mins} min` : ""}{kcalTxt}</div>}
         <div className="coach">
           {(() => {
             // Punto solo aparece cuando el entrenador está diciendo algo; celebra solo si hubo un logro real.
@@ -896,7 +900,7 @@ function Logbook({ uid }: { uid: string }) {
               );
             })()}
             <h2>Listo por hoy</h2>
-            <p className="meta num">{r.name}{mins && mins < 300 ? ` · ${mins} min` : ""}</p>
+            <p className="meta num">{r.name}{mins && mins < 300 ? ` · ${mins} min` : ""}{kcalTxt}</p>
             <div className="next">
               <span className="eyebrow">Mañana · {DAYS[tmr.getDay()]}</span>
               <b>{nr ? nr.name : "Descanso"}</b>
