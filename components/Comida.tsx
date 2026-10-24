@@ -15,12 +15,13 @@ export type Food = { id: string; name: string; kind: "producto" | "alimento" | "
 export type Meal = { id: string; date: string; at: string; slot: Slot; food_id: string | null; name: string; qty: number; kcal: number; protein_g: number; collagen_g: number; fruit_veg: number; estimated: boolean; note: string };
 type Slot = "desayuno" | "colacion" | "almuerzo" | "once" | "cena";
 type Question = { id: string; texto: string; opciones: string[] };
-type Estimate = { tipo: "etiqueta" | "plato" | "texto"; nombre: string; porcion: string; kcal: number; proteina_g: number; colageno_g: number; frutas_verduras: number; igual_a: string | null; rango: [number, number] | null; preguntas: Question[]; nota: string };
+type Estimate = { tipo: "etiqueta" | "plato" | "texto"; nombre: string; porcion: string; kcal: number; proteina_g: number; colageno_g: number; frutas_verduras: number; igual_a: string | null; rango: [number, number] | null; preguntas: Question[]; ingredientes: string[]; nota: string };
 // Borrador de lo que se va a anotar: cifras POR PORCIÓN; la comida guarda cifras × cantidad.
 type Draft = {
   name: string; portion: string; kcal: number; protein: number; collagen: number; fv: number;
   qty: number; slot: Slot; food_id: string | null; origin: "habitual" | "etiqueta" | "estimado";
   rango: [number, number] | null; preguntas: Question[]; answers: { texto: string; respuesta: string }[]; nota: string;
+  ingredientes: string[]; fixes: string[]; // lo que vio la IA y las correcciones de la persona
   save: boolean; text?: string; image?: string;
 };
 
@@ -38,6 +39,10 @@ const lsSet = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.st
 const uuid = () => (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const addDays = (k: string, n: number) => { const d = parseKey(k); d.setDate(d.getDate() + n); return keyOf(d); };
 const DAYS_BACK = 13;
+// Lo que vio la IA se guarda en la nota de la comida, para poder corregirla después sin la foto.
+const SEEN = "Lo que vi: ";
+const seenOf = (note: string) => (note.startsWith(SEEN) ? note.slice(SEEN.length).split(" · ").filter(Boolean) : []);
+const seenNote = (xs: string[]) => (xs.length ? SEEN + xs.join(" · ") : "");
 
 type Op = { op: "add"; row: Meal } | { op: "del"; id: string } | { op: "upd"; row: Meal };
 
@@ -112,22 +117,26 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
 
   /* ---- anotar ---- */
   function fromFood(f: Food): Draft {
-    return { name: f.name, portion: f.portion, kcal: f.kcal, protein: f.protein_g, collagen: f.collagen_g, fv: f.fruit_veg, qty: 1, slot: slotNow(), food_id: f.id, origin: "habitual", rango: null, preguntas: [], answers: [], nota: f.detail, save: false };
+    return { name: f.name, portion: f.portion, kcal: f.kcal, protein: f.protein_g, collagen: f.collagen_g, fv: f.fruit_veg, qty: 1, slot: slotNow(), food_id: f.id, origin: "habitual", rango: null, preguntas: [], answers: [], nota: f.detail, ingredientes: [], fixes: [], save: false };
   }
   function fromEstimate(x: Estimate, base?: Partial<Draft>): Draft {
     const f = x.igual_a ? foods.find((y) => y.id === x.igual_a) : null;
-    if (f) return { ...fromFood(f), slot: base?.slot ?? slotNow(), nota: x.tipo === "plato" ? "Lo reconocí como uno de tus habituales." : "" };
+    if (f && !base?.fixes?.length) return { ...fromFood(f), qty: base?.qty ?? 1, slot: base?.slot ?? slotNow(), nota: x.tipo === "plato" ? "Lo reconocí como uno de tus habituales." : "" };
     return {
       name: x.nombre, portion: x.porcion, kcal: x.kcal, protein: x.proteina_g, collagen: x.colageno_g, fv: x.frutas_verduras,
-      qty: 1, slot: base?.slot ?? slotNow(), food_id: null, origin: x.tipo === "etiqueta" ? "etiqueta" : "estimado",
+      qty: base?.qty ?? 1, slot: base?.slot ?? slotNow(), food_id: null, origin: x.tipo === "etiqueta" ? "etiqueta" : "estimado",
       rango: x.rango, preguntas: x.preguntas, answers: base?.answers ?? [], nota: x.nota,
-      save: x.tipo === "etiqueta", text: base?.text, image: base?.image,
+      ingredientes: x.ingredientes || [], fixes: base?.fixes ?? [],
+      save: x.tipo === "etiqueta" && !base?.fixes?.length, text: base?.text, image: base?.image,
     };
   }
   async function estimate(body: { image?: string; text?: string }, base?: Partial<Draft>) {
-    setErr(null); setBusy(body.image ? "Leyendo la foto…" : "Calculando…");
+    setErr(null); setBusy(base?.fixes?.length ? "Corrigiendo…" : body.image ? "Leyendo la foto…" : "Calculando…");
     try {
-      const x = await callCoach<Estimate>("/api/comida/estimar", { ...body, media_type: body.image ? "image/jpeg" : undefined, answers: base?.answers, previous: base?.name ? { nombre: base.name, porcion: base.portion, kcal: base.kcal } : undefined });
+      const x = await callCoach<Estimate>("/api/comida/estimar", {
+        ...body, media_type: body.image ? "image/jpeg" : undefined, answers: base?.answers, correccion: base?.fixes?.join(". ") || undefined,
+        previous: base?.name ? { nombre: base.name, porcion: base.portion, kcal: base.kcal, proteina_g: base.protein, ingredientes: base.ingredientes } : undefined,
+      });
       setDraft(fromEstimate(x, { ...base, text: body.text, image: body.image }));
       setWriting(false);
     } catch (er: any) { setErr(er?.message || "No se pudo calcular."); }
@@ -144,6 +153,10 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
     const answers = [...draft.answers.filter((a) => a.texto !== q.texto), { texto: q.texto, respuesta: opt }];
     estimate({ image: draft.image, text: draft.text }, { ...draft, answers });
   }
+  function fixDraft(t: string) {
+    if (!draft || t.trim().length < 2) return;
+    estimate({ image: draft.image, text: draft.text }, { ...draft, fixes: [...draft.fixes, t.trim()] });
+  }
   async function commit(d: Draft) {
     let food_id = d.food_id;
     if (d.save && !food_id && navigator.onLine) {
@@ -158,7 +171,7 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
     const row: Meal = {
       id: uuid(), date: day, at, slot: d.slot, food_id, name: d.name.trim() || "Comida", qty: d.qty,
       kcal: Math.round(d.kcal * d.qty), protein_g: Math.round(d.protein * d.qty * 10) / 10, collagen_g: Math.round(d.collagen * d.qty * 10) / 10,
-      fruit_veg: Math.round(d.fv * d.qty * 2) / 2, estimated: d.origin === "estimado" || (d.origin === "habitual" && foods.find((f) => f.id === food_id)?.source === "estimado"), note: "",
+      fruit_veg: Math.round(d.fv * d.qty * 2) / 2, estimated: d.origin === "estimado" || (d.origin === "habitual" && foods.find((f) => f.id === food_id)?.source === "estimado"), note: seenNote(d.ingredientes),
     };
     putMeals((ms) => [...ms, row]);
     queue({ op: "add", row });
@@ -168,10 +181,8 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
     }
     setDraft(null); setSug(null);
   }
-  function saveEdit(m: Meal, qty: number, slot: Slot) {
-    const k = qty / m.qty;
-    const row: Meal = { ...m, qty, slot, kcal: Math.round(m.kcal * k), protein_g: Math.round(m.protein_g * k * 10) / 10, collagen_g: Math.round(m.collagen_g * k * 10) / 10, fruit_veg: Math.round(m.fruit_veg * k * 2) / 2 };
-    putMeals((ms) => ms.map((x) => (x.id === m.id ? row : x)));
+  function saveEdit(row: Meal) {
+    putMeals((ms) => ms.map((x) => (x.id === row.id ? row : x)));
     queue({ op: "upd", row });
     setEditing(null); setSug(null);
   }
@@ -295,7 +306,7 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
       )}
 
       {writing && <WriteSheet busy={busy} err={err} onClose={() => { setWriting(false); setErr(null); }} onSend={(t) => estimate({ text: t })} />}
-      {draft && <DraftSheet draft={draft} busy={busy} err={err} onChange={setDraft} onAnswer={answer} onClose={() => { setDraft(null); setErr(null); }} onSave={commit} />}
+      {draft && <DraftSheet draft={draft} busy={busy} err={err} onChange={setDraft} onAnswer={answer} onFix={fixDraft} onClose={() => { setDraft(null); setErr(null); }} onSave={commit} />}
       {editing && <EditSheet meal={editing} onClose={() => setEditing(null)} onSave={saveEdit} onRemove={remove} />}
     </>
   );
@@ -330,8 +341,27 @@ function SlotChips({ slot, onSlot }: { slot: Slot; onSlot: (s: Slot) => void }) 
   );
 }
 
-function DraftSheet({ draft: d, busy, err, onChange, onAnswer, onClose, onSave }: {
-  draft: Draft; busy: string | null; err: string | null; onChange: (d: Draft) => void; onAnswer: (q: Question, opt: string) => void; onClose: () => void; onSave: (d: Draft) => void;
+// Lo que vio la IA, como lista, y un campo para decirle qué faltó o sobró.
+function SeenList({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div className="cseen"><span>Lo que vi</span>
+      <ul>{items.map((x, i) => <li key={i}>{x}</li>)}</ul>
+    </div>
+  );
+}
+function FixBox({ prompt, hint, busy, onFix }: { prompt: string; hint: string; busy: boolean; onFix: (t: string) => void }) {
+  const [t, setT] = useState("");
+  return (
+    <div className="field cq"><span>{prompt}</span>
+      <textarea className="ctext" rows={2} value={t} onChange={(ev) => setT(ev.target.value)} placeholder={hint} aria-label={prompt} />
+      <button type="button" className="big ghost" disabled={busy || t.trim().length < 2} onClick={() => { onFix(t); setT(""); }}>Corregir y recalcular</button>
+    </div>
+  );
+}
+
+function DraftSheet({ draft: d, busy, err, onChange, onAnswer, onFix, onClose, onSave }: {
+  draft: Draft; busy: string | null; err: string | null; onChange: (d: Draft) => void; onAnswer: (q: Question, opt: string) => void; onFix: (t: string) => void; onClose: () => void; onSave: (d: Draft) => void;
 }) {
   const [saving, setSaving] = useState(false);
   const set = (p: Partial<Draft>) => onChange({ ...d, ...p });
@@ -347,6 +377,8 @@ function DraftSheet({ draft: d, busy, err, onChange, onAnswer, onClose, onSave }
       </div>
       {d.fv > 0 && <p className="meta" style={{ margin: 0 }}>Suma {fmtNum(d.fv * d.qty)} {d.fv * d.qty === 1 ? "porción" : "porciones"} de fruta o verdura.</p>}
       {d.nota && <p className="how" style={{ margin: 0 }}>{d.nota}</p>}
+      <SeenList items={d.ingredientes} />
+      {d.fixes.length > 0 && <p className="meta" style={{ margin: 0 }}>Corregido: {d.fixes.join(" · ")}</p>}
 
       {busy ? <div className="cbusy" aria-live="polite"><Punto expr="piensa" size={34} alive /><span>Recalculando…</span></div>
         : open.map((q) => (
@@ -355,6 +387,11 @@ function DraftSheet({ draft: d, busy, err, onChange, onAnswer, onClose, onSave }
           </div>
         ))}
       {d.answers.length > 0 && <p className="meta" style={{ margin: 0 }}>{d.answers.map((a) => a.respuesta).join(" · ")}</p>}
+      {d.origin === "estimado" && !busy && (
+        <FixBox busy={!!busy} onFix={onFix}
+          prompt={d.image ? "¿Falta o sobra algo en el plato?" : "¿Falta o sobra algo?"}
+          hint={d.image ? "Ej.: también había papas, teñidas por la betarraga" : "Ej.: eran 2 huevos, no 1"} />
+      )}
       {err && <p className="msg">{err}</p>}
 
       <QtyStep qty={d.qty} portion={d.portion} onQty={(qty) => set({ qty })} />
@@ -393,21 +430,53 @@ function WriteSheet({ busy, err, onClose, onSend }: { busy: string | null; err: 
   );
 }
 
-function EditSheet({ meal, onClose, onSave, onRemove }: { meal: Meal; onClose: () => void; onSave: (m: Meal, qty: number, slot: Slot) => void; onRemove: (m: Meal) => void }) {
-  const [qty, setQty] = useState(meal.qty);
-  const [slot, setSlot] = useState<Slot>(meal.slot);
+function EditSheet({ meal, onClose, onSave, onRemove }: { meal: Meal; onClose: () => void; onSave: (m: Meal) => void; onRemove: (m: Meal) => void }) {
+  // Cifras por porción, para que la cantidad las multiplique; se guardan ya multiplicadas.
+  const per = { kcal: meal.kcal / meal.qty, p: meal.protein_g / meal.qty, c: meal.collagen_g / meal.qty, fv: meal.fruit_veg / meal.qty };
+  const [m, setM] = useState({ name: meal.name, qty: meal.qty, slot: meal.slot, ...per, seen: seenOf(meal.note), estimated: meal.estimated, food_id: meal.food_id, fixed: [] as string[] });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const [sure, setSure] = useState(false);
-  const k = qty / meal.qty;
+  const set = (p: Partial<typeof m>) => setM((x) => ({ ...x, ...p }));
+  async function fix(t: string) {
+    setBusy(true); setErr(null);
+    try {
+      const x = await callCoach<Estimate>("/api/comida/estimar", {
+        correccion: t.trim(),
+        previous: { nombre: m.name, porcion: "1 porción", kcal: m.kcal, proteina_g: m.p, ingredientes: m.seen },
+      });
+      set({ name: x.nombre, kcal: x.kcal, p: x.proteina_g, c: x.colageno_g, fv: x.frutas_verduras, seen: x.ingredientes || [], estimated: true, food_id: null, fixed: [...m.fixed, t.trim()] });
+    } catch (er: any) { setErr(er?.message || "No se pudo corregir. Prueba de nuevo."); }
+    setBusy(false);
+  }
+  const save = () => onSave({
+    ...meal, name: m.name.trim() || meal.name, qty: m.qty, slot: m.slot, food_id: m.food_id, estimated: m.estimated,
+    kcal: Math.round(m.kcal * m.qty), protein_g: Math.round(m.p * m.qty * 10) / 10, collagen_g: Math.round(m.c * m.qty * 10) / 10, fruit_veg: Math.round(m.fv * m.qty * 2) / 2,
+    note: m.seen.length ? seenNote(m.seen) : meal.note,
+  });
   return (
     <Sheet label="Editar comida" onClose={onClose}>
-      <div className="top-row"><h2 className="sheet-title">{meal.name}</h2><button type="button" className="linkbtn quiet" onClick={onClose}>Cerrar</button></div>
+      <div className="top-row"><span className={`ctag ${m.estimated ? "estimado" : "habitual"}`}>{m.estimated ? "Estimado" : "Cifra real"}</span><button type="button" className="linkbtn quiet" onClick={onClose}>Cerrar</button></div>
+      <input className="cname" aria-label="Nombre" value={m.name} onChange={(ev) => set({ name: ev.target.value })} />
       <div className="ctiles flat">
-        <div><b className="num">{kc(meal.kcal * k)}</b><span>kcal</span></div>
-        <div><b className="num">{gr(meal.protein_g * k)} g</b><span>de proteína</span>{meal.collagen_g > 0 && <small>{gr(meal.collagen_g * k)} g son colágeno</small>}</div>
+        <div><b className="num">{kc(m.kcal * m.qty)}</b><span>kcal</span></div>
+        <div><b className="num">{gr(m.p * m.qty)} g</b><span>de proteína</span>{m.c > 0 && <small>{gr(m.c * m.qty)} g son colágeno</small>}</div>
       </div>
-      <QtyStep qty={qty} onQty={setQty} />
-      <SlotChips slot={slot} onSlot={setSlot} />
-      <button type="button" className="big" onClick={() => onSave(meal, qty, slot)}>Guardar cambios</button>
+      <SeenList items={m.seen} />
+      {m.fixed.length > 0 && <p className="meta" style={{ margin: 0 }}>Corregido: {m.fixed.join(" · ")}. Toca Guardar cambios para dejarlo así.</p>}
+      {busy ? <div className="cbusy" aria-live="polite"><Punto expr="piensa" size={34} alive /><span>Corrigiendo…</span></div>
+        : <FixBox busy={busy} onFix={fix} prompt="¿La IA se equivocó? Dile qué faltó o sobró" hint="Ej.: también había papas, teñidas por la betarraga" />}
+      {err && <p className="msg">{err}</p>}
+      <QtyStep qty={m.qty} onQty={(qty) => set({ qty })} />
+      <SlotChips slot={m.slot} onSlot={(slot) => set({ slot })} />
+      <details className="eguide plain">
+        <summary><span>Corregir las cifras a mano<small>Por porción</small></span></summary>
+        <div className="eguide-body fields" key={`${m.kcal}-${m.p}`}>
+          <label className="field">kcal<input inputMode="numeric" defaultValue={Math.round(m.kcal)} onBlur={(ev) => { const v = parseNum(ev.target.value); if (v != null) set({ kcal: v }); }} /></label>
+          <label className="field">Proteína (g)<input inputMode="decimal" defaultValue={fmtNum(Math.round(m.p * 10) / 10)} onBlur={(ev) => { const v = parseNum(ev.target.value); if (v != null) set({ p: v }); }} /></label>
+        </div>
+      </details>
+      <button type="button" className="big" disabled={busy} onClick={save}>Guardar cambios</button>
       {sure
         ? <button type="button" className="big ghost cdanger" onClick={() => onRemove(meal)}>Sí, quitar {meal.name}</button>
         : <button type="button" className="linkbtn danger" onClick={() => setSure(true)}>Quitar esta comida</button>}

@@ -631,6 +631,11 @@ img{max-width:100%}
 .ctext{border:1px solid var(--line-strong);border-radius:12px;background:var(--field);color:var(--ink);font:inherit;font-size:1.05rem;padding:12px;width:100%;min-width:0;resize:vertical}
 .cswitch{width:28px;height:28px;accent-color:var(--accent);flex:none}
 .cq{background:var(--field);border:1px solid var(--accent-line);border-radius:12px;padding:12px}
+.cseen{background:var(--field);border:1px solid var(--line-strong);border-radius:12px;padding:10px 14px}
+.cseen>span{display:block;font-size:.85rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.cseen ul{margin:6px 0 0;padding-left:1.1em;font-size:1rem;line-height:1.45;color:var(--ink)}
+.cq .ctext{margin-top:8px}
+.cq .big{margin-top:8px}
 .cdanger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 55%,transparent)}
 .sheet .step{background:var(--field);border:1px solid var(--line-strong)}
 .cadd .big{padding-block:10px;line-height:1.25}

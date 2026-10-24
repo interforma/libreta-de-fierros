@@ -17,6 +17,7 @@ Responde SOLO con un objeto JSON válido, sin texto antes ni después, con estas
 "igual_a": el id de un alimento habitual de la lista si es claramente el mismo producto o receta; si no, null.
 "rango": si es estimado y la incertidumbre es grande, [kcal_min, kcal_max]; si no, null.
 "preguntas": lista de 0 a 2 preguntas que cambiarían mucho la cifra, cada una {"id": "...", "texto": "...", "opciones": ["...", "..."]} con 2 a 4 opciones cortas. Úsalas SOLO en platos caseros y solo si aún no fueron respondidas.
+"ingredientes": lista de 1 a 12 cosas que identificaste, cada una corta y con cantidad aproximada si se puede (ej.: ["Bistec ~200 g", "Betarraga cocida", "Palta ¼", "Huevo duro"]). En una etiqueta, solo el producto.
 "nota": una frase corta si hay algo importante (ej.: "Usé la porción de la etiqueta, no los 100 g"); si no, "".
 Reglas:
 - Etiqueta: copia las cifras POR PORCIÓN del envase, no por 100 g. Si la porción no aparece, usa el envase completo y dilo en la nota. Si un ingrediente declara colágeno, estima cuánto de la proteína es colágeno.
@@ -24,7 +25,9 @@ Reglas:
 - Si ya hay respuestas a preguntas, úsalas y no vuelvas a preguntar lo mismo.
 - Si la persona dice una cantidad ("2 huevos", "media taza"), las cifras son para esa cantidad.
 - Prefiere un alimento habitual de la lista si calza: sus cifras son reales.
-- No inventes marcas.`;
+- No inventes marcas.
+- En fotos de plato, el color engaña: la betarraga, las salsas o el ketchup tiñen otros alimentos (papas, arroz, fideos). Si algo teñido podría ser otro alimento o puede haber comida tapada, dilo en la nota (ej.: "Lo rojo podría ser papa teñida por la betarraga").
+- Si llega una CORRECCIÓN de la persona, manda sobre lo que viste o estimaste antes: agrega lo que faltó, quita lo que sobró, corrige lo que confundiste y recalcula todo (cifras, ingredientes, nombre si corresponde). No preguntes de nuevo lo que la corrección ya aclara.`;
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
 const num = (v: unknown, max: number) => { const n = Number(v); return isFinite(n) && n >= 0 ? Math.min(n, max) : 0; };
@@ -32,12 +35,13 @@ const num = (v: unknown, max: number) => { const n = Number(v); return isFinite(
 export async function POST(req: Request) {
   const db = userDb(req);
   if (!db) return NextResponse.json({ error: "Inicia sesión de nuevo." }, { status: 401 });
-  const { image, media_type, text, answers, previous } = await req.json().catch(() => ({}));
+  const { image, media_type, text, answers, previous, correccion } = await req.json().catch(() => ({}));
   const hasImg = typeof image === "string" && image.length > 0;
   if (hasImg && !TYPES.includes(media_type)) return NextResponse.json({ error: "Formato de foto no válido." }, { status: 400 });
   if (hasImg && image.length > 3_500_000) return NextResponse.json({ error: "La foto es muy pesada. Prueba con otra." }, { status: 413 });
   const said = typeof text === "string" ? text.trim().slice(0, 600) : "";
-  if (!hasImg && said.length < 2) return NextResponse.json({ error: "Saca una foto o escribe qué comiste." }, { status: 400 });
+  const fix = typeof correccion === "string" ? correccion.trim().slice(0, 400) : "";
+  if (!hasImg && said.length < 2 && !(fix.length >= 2 && previous?.nombre)) return NextResponse.json({ error: "Saca una foto o escribe qué comiste." }, { status: 400 });
 
   const { data: foods } = await db.from("foods").select("id,name,portion,kcal,protein_g").order("uses", { ascending: false }).limit(60);
   const list = (foods || []).map((f: any) => `${f.id}: ${f.name} — ${f.portion}: ${Number(f.kcal)} kcal, ${Number(f.protein_g)} g proteína`).join("\n");
@@ -46,7 +50,8 @@ export async function POST(req: Request) {
   const ask = [
     `ALIMENTOS HABITUALES DE LA PERSONA (id: nombre — porción: cifras):\n${list || "(ninguno aún)"}`,
     said ? `LO QUE DIJO LA PERSONA: ${said}` : "",
-    previous?.nombre ? `TU ESTIMACIÓN ANTERIOR: ${String(previous.nombre).slice(0, 80)}, ${String(previous.porcion || "").slice(0, 60)}, ${num(previous.kcal, 5000)} kcal.` : "",
+    previous?.nombre ? `TU ESTIMACIÓN ANTERIOR: ${String(previous.nombre).slice(0, 80)}, ${String(previous.porcion || "").slice(0, 60)}, ${num(previous.kcal, 5000)} kcal, ${num(previous.proteina_g, 400)} g proteína.${Array.isArray(previous.ingredientes) && previous.ingredientes.length ? ` Ingredientes: ${previous.ingredientes.slice(0, 12).map((x: unknown) => String(x).slice(0, 50)).join("; ")}.` : ""}` : "",
+    fix ? `CORRECCIÓN DE LA PERSONA (manda sobre lo anterior): ${fix}` : "",
     ans ? `RESPUESTAS A TUS PREGUNTAS:\n${ans}` : "",
     "Estima la comida.",
   ].filter(Boolean).join("\n\n");
@@ -78,6 +83,7 @@ export async function POST(req: Request) {
       igual_a: out.igual_a && known.has(out.igual_a) ? out.igual_a : null,
       rango: rango && rango[0] < rango[1] ? rango : null,
       preguntas,
+      ingredientes: (Array.isArray(out.ingredientes) ? out.ingredientes : []).slice(0, 12).map((x: unknown) => String(x).slice(0, 50)).filter(Boolean),
       nota: String(out.nota || "").slice(0, 200),
     });
   } catch (e) {
