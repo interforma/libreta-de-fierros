@@ -27,7 +27,7 @@ Reglas:
 - Prefiere un alimento habitual de la lista si calza: sus cifras son reales.
 - No inventes marcas.
 - En fotos de plato, el color engaña: la betarraga, las salsas o el ketchup tiñen otros alimentos (papas, arroz, fideos). Si algo teñido podría ser otro alimento o puede haber comida tapada, dilo en la nota (ej.: "Lo rojo podría ser papa teñida por la betarraga").
-- Si llega una CORRECCIÓN de la persona, manda sobre lo que viste o estimaste antes: agrega lo que faltó, quita lo que sobró, corrige lo que confundiste y recalcula todo (cifras, ingredientes, nombre si corresponde). No preguntes de nuevo lo que la corrección ya aclara.`;
+- Si llega una CORRECCIÓN de la persona, manda sobre lo que viste o estimaste antes: agrega lo que faltó, quita lo que sobró, corrige lo que confundiste y recalcula todo (cifras, ingredientes, nombre si corresponde). No preguntes de nuevo lo que la corrección ya aclara. Si la estimación anterior es un habitual de la persona (cifras reales), parte de esas cifras y ajusta solo lo que cambió (ej.: "sin fruta" en un bowl → resta la manzana y las pasas, y deja frutas_verduras en 0); el nombre debe decir el cambio (ej.: "Bowl de avena sin fruta").`;
 
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
 const num = (v: unknown, max: number) => { const n = Number(v); return isFinite(n) && n >= 0 ? Math.min(n, max) : 0; };

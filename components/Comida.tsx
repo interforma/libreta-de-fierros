@@ -44,6 +44,8 @@ const DAYS_BACK = 13;
 const SEEN = "Lo que vi: ";
 const seenOf = (note: string) => (note.startsWith(SEEN) ? note.slice(SEEN.length).split(" · ").filter(Boolean) : []);
 const seenNote = (xs: string[]) => (xs.length ? SEEN + xs.join(" · ") : "");
+// Ingredientes de una receta habitual, desde su detalle ("60 g de avena + 200 ml de leche + …").
+const partsOf = (f?: Food | null) => (f?.kind === "receta" && f.detail ? f.detail.split(/\s\+\s/).map((x) => x.trim().replace(/\.$/, "")).filter(Boolean).slice(0, 12) : []);
 
 type Op = { op: "add"; row: Meal } | { op: "del"; id: string } | { op: "upd"; row: Meal };
 
@@ -117,7 +119,7 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
 
   /* ---- anotar ---- */
   function fromFood(f: Food): Draft {
-    return { name: f.name, portion: f.portion, kcal: f.kcal, protein: f.protein_g, collagen: f.collagen_g, fv: f.fruit_veg, qty: 1, slot: slotNow(), food_id: f.id, origin: "habitual", rango: null, preguntas: [], answers: [], nota: f.detail, ingredientes: [], fixes: [], save: false };
+    return { name: f.name, portion: f.portion, kcal: f.kcal, protein: f.protein_g, collagen: f.collagen_g, fv: f.fruit_veg, qty: 1, slot: slotNow(), food_id: f.id, origin: "habitual", rango: null, preguntas: [], answers: [], nota: f.kind === "receta" ? "" : f.detail, ingredientes: partsOf(f), fixes: [], save: false };
   }
   function fromEstimate(x: Estimate, base?: Partial<Draft>): Draft {
     const f = x.igual_a ? foods.find((y) => y.id === x.igual_a) : null;
@@ -307,7 +309,7 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
 
       {writing && <WriteSheet busy={busy} err={err} onClose={() => { setWriting(false); setErr(null); }} onSend={(t) => estimate({ text: t })} />}
       {draft && <DraftSheet draft={draft} busy={busy} err={err} onChange={setDraft} onAnswer={answer} onFix={fixDraft} onClose={() => { setDraft(null); setErr(null); }} onSave={commit} />}
-      {editing && <EditSheet meal={editing} onClose={() => setEditing(null)} onSave={saveEdit} onRemove={remove} />}
+      {editing && <EditSheet meal={editing} food={foods.find((f) => f.id === editing.food_id) ?? null} onClose={() => setEditing(null)} onSave={saveEdit} onRemove={remove} />}
     </>
   );
 }
@@ -342,10 +344,10 @@ function SlotChips({ slot, onSlot }: { slot: Slot; onSlot: (s: Slot) => void }) 
 }
 
 // Lo que vio la IA, como lista, y un campo para decirle qué faltó o sobró.
-function SeenList({ items }: { items: string[] }) {
+function SeenList({ items, label = "Lo que vi" }: { items: string[]; label?: string }) {
   if (!items.length) return null;
   return (
-    <div className="cseen"><span>Lo que vi</span>
+    <div className="cseen"><span>{label}</span>
       <ul>{items.map((x, i) => <li key={i}>{x}</li>)}</ul>
     </div>
   );
@@ -377,7 +379,7 @@ function DraftSheet({ draft: d, busy, err, onChange, onAnswer, onFix, onClose, o
       </div>
       {d.fv > 0 && <p className="meta" style={{ margin: 0 }}>Suma {fmtNum(d.fv * d.qty)} {d.fv * d.qty === 1 ? "porción" : "porciones"} de fruta o verdura.</p>}
       {d.nota && <p className="how" style={{ margin: 0 }}>{d.nota}</p>}
-      <SeenList items={d.ingredientes} />
+      <SeenList items={d.ingredientes} label={d.origin === "habitual" ? "Lleva" : "Lo que vi"} />
       {d.fixes.length > 0 && <p className="meta" style={{ margin: 0 }}>Corregido: {d.fixes.join(" · ")}</p>}
 
       {busy ? <div className="cbusy" aria-live="polite"><Punto expr="piensa" size={34} alive /><span>Recalculando…</span></div>
@@ -391,6 +393,9 @@ function DraftSheet({ draft: d, busy, err, onChange, onAnswer, onFix, onClose, o
         <FixBox busy={!!busy} onFix={onFix}
           prompt={d.image ? "¿Falta o sobra algo en el plato?" : "¿Falta o sobra algo?"}
           hint={d.image ? "Ej.: también había papas, teñidas por la betarraga" : "Ej.: eran 2 huevos, no 1"} />
+      )}
+      {d.origin === "habitual" && d.ingredientes.length > 0 && !busy && (
+        <FixBox busy={!!busy} onFix={onFix} prompt="¿Cambia algo esta vez?" hint="Ej.: sin fruta · con plátano en vez de manzana" />
       )}
       {err && <p className="msg">{err}</p>}
 
@@ -430,10 +435,10 @@ function WriteSheet({ busy, err, onClose, onSend }: { busy: string | null; err: 
   );
 }
 
-function EditSheet({ meal, onClose, onSave, onRemove }: { meal: Meal; onClose: () => void; onSave: (m: Meal) => void; onRemove: (m: Meal) => void }) {
+function EditSheet({ meal, food, onClose, onSave, onRemove }: { meal: Meal; food: Food | null; onClose: () => void; onSave: (m: Meal) => void; onRemove: (m: Meal) => void }) {
   // Cifras por porción, para que la cantidad las multiplique; se guardan ya multiplicadas.
   const per = { kcal: meal.kcal / meal.qty, p: meal.protein_g / meal.qty, c: meal.collagen_g / meal.qty, fv: meal.fruit_veg / meal.qty };
-  const [m, setM] = useState({ name: meal.name, qty: meal.qty, slot: meal.slot, ...per, seen: seenOf(meal.note), estimated: meal.estimated, food_id: meal.food_id, fixed: [] as string[] });
+  const [m, setM] = useState({ name: meal.name, qty: meal.qty, slot: meal.slot, ...per, seen: seenOf(meal.note).length ? seenOf(meal.note) : partsOf(food), estimated: meal.estimated, food_id: meal.food_id, fixed: [] as string[] });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sure, setSure] = useState(false);
@@ -462,10 +467,12 @@ function EditSheet({ meal, onClose, onSave, onRemove }: { meal: Meal; onClose: (
         <div><b className="num">{kc(m.kcal * m.qty)}</b><span>kcal</span></div>
         <div><b className="num">{gr(m.p * m.qty)} g</b><span>de proteína</span>{m.c > 0 && <small>{gr(m.c * m.qty)} g son colágeno</small>}</div>
       </div>
-      <SeenList items={m.seen} />
+      <SeenList items={m.seen} label={m.estimated ? "Lo que vi" : "Lleva"} />
       {m.fixed.length > 0 && <p className="meta" style={{ margin: 0 }}>Corregido: {m.fixed.join(" · ")}. Toca Guardar cambios para dejarlo así.</p>}
       {busy ? <div className="cbusy" aria-live="polite"><Punto expr="piensa" size={34} alive /><span>Corrigiendo…</span></div>
-        : <FixBox busy={busy} onFix={fix} prompt="¿La IA se equivocó? Dile qué faltó o sobró" hint="Ej.: también había papas, teñidas por la betarraga" />}
+        : <FixBox busy={busy} onFix={fix}
+            prompt={m.estimated ? "¿La IA se equivocó? Dile qué faltó o sobró" : "¿Cambió algo esta vez?"}
+            hint={m.estimated ? "Ej.: también había papas, teñidas por la betarraga" : "Ej.: sin fruta · con plátano en vez de manzana"} />}
       {err && <p className="msg">{err}</p>}
       <QtyStep qty={m.qty} onQty={(qty) => set({ qty })} />
       <SlotChips slot={m.slot} onSlot={(slot) => set({ slot })} />
