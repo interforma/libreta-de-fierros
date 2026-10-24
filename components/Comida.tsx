@@ -10,6 +10,7 @@ import { callCoach, shrinkPhoto } from "@/lib/coachClient";
 import { energy, type Profile } from "@/lib/health";
 import { fmtNum, keyOf, parseKey, parseNum, shortDate } from "@/lib/logic";
 import Punto from "@/components/Punto";
+import Fold from "@/components/Fold";
 
 export type Food = { id: string; name: string; kind: "producto" | "alimento" | "receta"; portion: string; kcal: number; protein_g: number; collagen_g: number; fruit_veg: number; source: "etiqueta" | "estimado" | "manual"; detail: string; uses: number };
 export type Meal = { id: string; date: string; at: string; slot: Slot; food_id: string | null; name: string; qty: number; kcal: number; protein_g: number; collagen_g: number; fruit_veg: number; estimated: boolean; note: string };
@@ -56,7 +57,6 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
   const [writing, setWriting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null); // texto de espera mientras la IA estima
   const [err, setErr] = useState<string | null>(null);
-  const [allHab, setAllHab] = useState(false);
   const [sug, setSug] = useState<{ busy: boolean; text: string | null; err: string | null; day: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const e = energy(profile);
@@ -245,17 +245,17 @@ export default function Comida({ uid, profile, todayKey, header, onGoProfile }: 
       {busy && !draft && <div className="cbusy" aria-live="polite"><Punto expr="piensa" size={34} alive /><span>{busy}</span></div>}
       {err && !draft && !writing && <p className="msg" style={{ marginTop: 10 }}>{err}</p>}
 
-      {hab.length > 0 && <>
-        <h3 className="csub">Tus habituales <span>un toque y listo</span></h3>
-        <div className="chab">
-          {(allHab ? hab : hab.slice(0, 8)).map((f) => (
-            <button key={f.id} type="button" onClick={() => { setDraft(fromFood(f)); setErr(null); }}>
-              <b>{f.name}</b><span className="num">{kc(f.kcal)} kcal · {gr(f.protein_g)} g</span><small>{f.portion}</small>
-            </button>
-          ))}
-        </div>
-        {hab.length > 8 && <button type="button" className="linkbtn" style={{ marginTop: 10 }} onClick={() => setAllHab(!allHab)}>{allHab ? "Ver menos" : `Ver todos (${hab.length})`}</button>}
-      </>}
+      {hab.length > 0 && (
+        <Fold storeKey={`lf.${uid}.fold.habituales`} title="Tus habituales" count={hab.length} hint="Un toque y listo · los más usados primero">
+          <div className="chab">
+            {hab.map((f) => (
+              <button key={f.id} type="button" onClick={() => { setDraft(fromFood(f)); setErr(null); }}>
+                <b>{f.name}</b><span className="num">{kc(f.kcal)} kcal · {gr(f.protein_g)} g</span><small>{f.portion}</small>
+              </button>
+            ))}
+          </div>
+        </Fold>
+      )}
 
       {isToday && target && dayMeals.length > 0 && (
         <div style={{ marginTop: 16 }}>

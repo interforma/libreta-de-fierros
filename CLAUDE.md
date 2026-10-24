@@ -11,6 +11,11 @@
   - Mínimos: datos y botones de acción ≥ 1 rem; texto secundario ≥ 0,92 rem; etiquetas en mayúscula (eyebrow) ≥ 0,85 rem. Nada bajo 0,82 rem.
   - Contraste: texto secundario con `--muted` / `--plate-sub` (≥ 4,5:1, hoy sobre 6:1). No usar grises más claros ni opacidad para bajar el texto.
   - Antes de publicar un cambio visual, revisarlo en 390 px de ancho, en tema claro y oscuro, y con letra "Muy grande".
+- **Regla de listas largas (desplegables).** Una lista que puede pasar de ~5 elementos y que no es lo principal de la pantalla va dentro de `components/Fold.tsx`, no a la vista completa ni con "Ver todos".
+  - Encabezado con título, cantidad entre paréntesis y una pista de qué hay adentro (≥ 0,92 rem); área táctil ≥ 60 px con "+" / "−" a la derecha.
+  - Cerrado por defecto; recuerda si la persona lo dejó abierto o cerrado (`storeKey` = `lf.<uid>.fold.<lista>`, en localStorage).
+  - Adentro, lo más usado o lo más reciente primero. Lo que la persona necesita en el momento (la acción principal, el total del día, alertas de salud) nunca va dentro de un desplegable.
+  - Primer uso: "Tus habituales" en Comida.
 - En `sessions.items`, las claves que empiezan con `__` no son ejercicios: `__t0`/`__t1` (inicio y término), `__uso` (contadores de fricción), `__cierre` (respuesta a "¿Algo te costó hoy?"), `__resumen` (comentario del entrenador), `__suplementos`.
 - IA del entrenador en `lib/coach.ts` y `app/api/{resumen,balance,orientacion}`: los números se calculan en el servidor y Claude solo redacta. Modelo rápido `ANTHROPIC_MODEL_FAST` (por defecto Haiku) para mensajes cortos.
 - Criterio de producto: la app propone o avisa en el momento justo; no agrega datos que nadie pidió.

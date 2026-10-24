@@ -607,6 +607,15 @@ img{max-width:100%}
 .cadd .big{display:flex;align-items:center;justify-content:center;gap:10px}
 .cadd svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
 .cbusy{display:flex;align-items:center;gap:12px;margin-top:12px;font-size:1.05rem;font-weight:600}
+.fold{margin-top:20px;border:1.5px solid var(--line-strong);border-radius:14px;background:var(--surface)}
+.fold-h{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-height:60px;padding:10px 16px;background:transparent;border:0;color:var(--ink);text-align:left;font:inherit;cursor:pointer}
+.fold-h>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fold-h b{font-family:var(--display);font-size:1.15rem;font-weight:600}
+.fold-h em{font-style:normal;font-weight:600;color:var(--muted)}
+.fold-h small{font-size:.92rem;font-weight:500;color:var(--muted)}
+.fold-h i{font-style:normal;font-size:1.6rem;font-weight:600;line-height:1;color:var(--accent-text);flex:none}
+.fold-b{padding:0 12px 14px}
+.fold-b .chab{margin-top:0}
 .csub{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;font-family:var(--display);font-size:1.15rem;font-weight:600;margin:20px 2px 0}
 .csub span{font-family:var(--body);font-size:.95rem;font-weight:600;color:var(--muted)}
 .chab{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px}
